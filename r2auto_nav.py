@@ -23,6 +23,8 @@ import numpy as np
 import math
 import cmath
 import time
+import tf2_ros
+from tf2_ros import LookupException, ConnectivityException, ExtrapolationException
 
 # constants
 rotatechange = 0.1
@@ -33,6 +35,12 @@ front_angle = 30
 front_angles = range(-front_angle,front_angle+1,1)
 scanfile = 'lidar.txt'
 mapfile = 'map.txt'
+MAP_OPEN_LIST = 1
+MAP_CLOSE_LIST = 2
+FRONTIER_OPEN_LIST = 3
+FRONTIER_CLOSE_LIST = 4
+OCC_THRESHOLD = 10
+N_S = 8
 
 # code from https://automaticaddison.com/how-to-convert-a-quaternion-into-euler-angles-in-python/
 def euler_from_quaternion(x, y, z, w):
@@ -56,6 +64,9 @@ def euler_from_quaternion(x, y, z, w):
     yaw_z = math.atan2(t3, t4)
 
     return roll_x, pitch_y, yaw_z # in radians
+
+
+
 
 class AutoNav(Node):
 
@@ -97,29 +108,72 @@ class AutoNav(Node):
         self.scan_subscription  # prevent unused variable warning
         self.laser_range = np.array([])
 
-
+        self.tfBuffer = tf2_ros.Buffer()
+        self.tfListener = tf2_ros.TransformListener(self.tfBuffer, self)
+        
+        self.visitedNodes = []
+        
     def odom_callback(self, msg):
-        # self.get_logger().info('In odom_callback')
+        #self.get_logger().info('In odom_callback')
+
         orientation_quat =  msg.pose.pose.orientation
         self.roll, self.pitch, self.yaw = euler_from_quaternion(orientation_quat.x, orientation_quat.y, orientation_quat.z, orientation_quat.w)
 
 
     def occ_callback(self, msg):
-        # self.get_logger().info('In occ_callback')
+        self.get_logger().info('In occ_callback')
         # create numpy array
         msgdata = np.array(msg.data)
         # compute histogram to identify percent of bins with -1
-        # occ_counts = np.histogram(msgdata,occ_bins)
+        
+        occ_counts = np.histogram(msgdata,occ_bins)
         # calculate total number of bins
-        # total_bins = msg.info.width * msg.info.height
+        total_bins = msg.info.width * msg.info.height
         # log the info
-        # self.get_logger().info('Unmapped: %i Unoccupied: %i Occupied: %i Total: %i' % (occ_counts[0][0], occ_counts[0][1], occ_counts[0][2], total_bins))
-
+        self.get_logger().info('Unmapped: %i Unoccupied: %i Occupied: %i Total: %i' % (occ_counts[0][0], occ_counts[0][1], occ_counts[0][2], total_bins))
+        
         # make msgdata go from 0 instead of -1, reshape into 2D
         oc2 = msgdata + 1
         # reshape to 2D array using column order
         # self.occdata = np.uint8(oc2.reshape(msg.info.height,msg.info.width,order='F'))
         self.occdata = np.uint8(oc2.reshape(msg.info.height,msg.info.width))
+        #for i in range(len(self.occdata)):
+        #    queue = ''
+        #    for j in range(len(self.occdata[0])):
+        #        queue += str(self.occdata[i][j])
+            #self.get_logger().info("Map size is %i %i %s" % (len(self.occdata), len(self.occdata[0]),queue))
+                
+        try:
+            trans = self.tfBuffer.lookup_transform('map', 'base_link', rclpy.time.Time())
+        except (LookupException, ConnectivityException, ExtrapolationException) as e:
+            self.get_logger().info('No transformation found')
+            return
+            
+        cur_pos = trans.transform.translation
+        cur_rot = trans.transform.rotation
+        
+        #get map resolution
+        map_res = msg.info.resolution
+        # get map origin struct has fields of x, y, and z
+        map_origin = msg.info.origin.position
+        # get map grid positions for x, y position
+        grid_x = round((cur_pos.x - map_origin.x) / map_res)
+        grid_y = round(((cur_pos.y - map_origin.y) / map_res))
+        # self.get_logger().info('Grid Y: %i Grid X: %i' % (grid_y, grid_x))
+        grid = ((grid_x - 1,grid_y - 1),(grid_x,grid_y - 1),(grid_x + 1,grid_y - 1),(grid_x - 1,grid_y),(grid_x,grid_y),(grid_x + 1,grid_y),(grid_x - 1,grid_y + 1),(grid_x,grid_y + 1),(grid_x + 1,grid_y + 1))
+        for i in grid:
+            if i not in self.visitedNodes:
+                self.visitedNodes.append(i)
+        
+            
+        self.get_logger().info("Position now is %i %i " % (grid_x,grid_y))
+        
+        self.get_logger().info("Map size is %i %i" % (len(self.occdata), len(self.occdata[0])))
+        visited = ''
+        for i in self.visitedNodes:
+            visited += f'{i[0]},{i[1]} '
+        self.get_logger().info("Visited nodes so far is %s" % visited)
+        
         # print to file
         np.savetxt(mapfile, self.occdata)
 
@@ -181,11 +235,68 @@ class AutoNav(Node):
             c_dir_diff = np.sign(c_change.imag)
             # self.get_logger().info('c_change_dir: %f c_dir_diff: %f' % (c_change_dir, c_dir_diff))
 
+        
         self.get_logger().info('End Yaw: %f' % math.degrees(current_yaw))
+        
         # set the rotation speed to 0
         twist.angular.z = 0.0
         # stop the rotation
         self.publisher_.publish(twist)
+    
+    '''
+    def find_frontiers(self, map, map_height, map_width, pose):
+        frontiers = []
+        cell_states = {}
+        
+        q_m = []
+        q_m.append(pose)
+        cell_states[pose] = MAP_OPEN_LIST
+        adj_vector = []
+        v_neighbours = []
+        
+        while(!q_m):
+            cur_pos = q_m[0]
+            q_m.pop(0)
+            
+            #Skip map if map_close_list
+            if(cell_states[cur_pos] == MAP_CLOSE_LIST):
+                continue
+            if(is_frontier_point(map,cur_pos,map_size,map_width)):
+                #Adding frontiers
+                q_f = []
+                new_frontier = []
+                q_f.append(cur_pos)
+                cell_states[cur_pos] = FRONTIER_OPEN_LIST
+                
+                while(!q_f):
+                    n_cell = q_f[0]
+                    q_f.pop(0)
+                    
+                    if(cell_states[n_cell] == MAP_CLOSE_LIST or cell_states[n_cell] == FRONTIER_CLOSE_LIST):
+                        continue
+                    if(is_frontier_point(map,n_cell,map_size, map_width)):
+                        new_frontier.append(n_cell)
+                        get_neighbours(adj_vector,cur_pos,map_width)
+                        
+                        for i in range(N_S):
+                            if(adj_vector[i] < map_size && adj_vector[i] >=0):
+                                if(cell_states[adj_vector[i]] != FRONTIER_OPEN_LIST and cell_states[adj_vector[i]] != FRONTIER_CLOSE_LIST and cell_states[adj_vector[i]] != MAP_CLOSE_LIST):
+                                    if(map.data[adj_vector[i]] != 100):
+                                        q_f.append(adj_vector[i])
+                                        cell_states[adj_vector[i]] = FRONTIER_OPEN_LIST
+                            
+                                        
+                                               
+                                                   
+                if(len(new_frontier) > 2):
+                    frontiers.append(new_frontier)
+                    
+                
+                
+        
+        
+        map_size = map_height * map_width;
+        '''
 
 
     def pick_direction(self):
@@ -232,12 +343,13 @@ class AutoNav(Node):
             self.pick_direction()
 
             while rclpy.ok():
+                
                 if self.laser_range.size != 0:
                     # check distances in front of TurtleBot and find values less
                     # than stop_distance
                     lri = (self.laser_range[front_angles]<float(stop_distance)).nonzero()
-                    # self.get_logger().info('Distances: %s' % str(lri))
-
+                    #self.get_logger().info('Distances: %s' % str(lri))
+                    
                     # if the list is not empty
                     if(len(lri[0])>0):
                         # stop moving
