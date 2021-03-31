@@ -1,0 +1,9 @@
+[0.240s] Invoking command in '/home/nielsen/colcon_ws/src/auto_nav/auto_nav': CONDA_PROMPT_MODIFIER=(base) PS1=(klinify_api-hLs846Y4) (base) \[\e]0;\u@\h: \w\a\]${debian_chroot:+($debian_chroot)}\[\033[01;32m\]\u@\h\[\033[00m\]:\[\033[01;34m\]\w\[\033[00m\]\$ PYTHONPATH=/home/nielsen/colcon_ws/src/auto_nav/auto_nav/install/auto_nav/lib/python3.8/site-packages:${PYTHONPATH} /usr/bin/python3 setup.py egg_info --egg-base build/auto_nav build --build-base /home/nielsen/colcon_ws/src/auto_nav/auto_nav/build/auto_nav/build install --prefix /home/nielsen/colcon_ws/src/auto_nav/auto_nav/install/auto_nav --record /home/nielsen/colcon_ws/src/auto_nav/auto_nav/build/auto_nav/install.log --single-version-externally-managed
+[0.436s] running egg_info
+[0.437s] writing build/auto_nav/auto_nav.egg-info/PKG-INFO
+[0.437s] writing dependency_links to build/auto_nav/auto_nav.egg-info/dependency_links.txt
+[0.438s] writing entry points to build/auto_nav/auto_nav.egg-info/entry_points.txt
+[0.438s] writing requirements to build/auto_nav/auto_nav.egg-info/requires.txt
+[0.438s] writing top-level names to build/auto_nav/auto_nav.egg-info/top_level.txt
+[0.466s] error: package directory 'auto_nav' does not exist
+[0.488s] Invoked command in '/home/nielsen/colcon_ws/src/auto_nav/auto_nav' returned '1': CONDA_PROMPT_MODIFIER=(base) PS1=(klinify_api-hLs846Y4) (base) \[\e]0;\u@\h: \w\a\]${debian_chroot:+($debian_chroot)}\[\033[01;32m\]\u@\h\[\033[00m\]:\[\033[01;34m\]\w\[\033[00m\]\$ PYTHONPATH=/home/nielsen/colcon_ws/src/auto_nav/auto_nav/install/auto_nav/lib/python3.8/site-packages:${PYTHONPATH} /usr/bin/python3 setup.py egg_info --egg-base build/auto_nav build --build-base /home/nielsen/colcon_ws/src/auto_nav/auto_nav/build/auto_nav/build install --prefix /home/nielsen/colcon_ws/src/auto_nav/auto_nav/install/auto_nav --record /home/nielsen/colcon_ws/src/auto_nav/auto_nav/build/auto_nav/install.log --single-version-externally-managed
