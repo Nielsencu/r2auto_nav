@@ -1,3 +1,12 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+"""
+Created on Tue Mar  9 18:35:30 2021
+
+@author: fudgebutthead2
+"""
+
+#Script adopted from auto_nav
 # Copyright 2016 Open Source Robotics Foundation, Inc.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -189,18 +198,35 @@ class AutoNav(Node):
 
 
     def pick_direction(self):
-        # self.get_logger().info('In pick_direction')
+        #Niran Edited Part
+        self.get_logger().info('In pick_direction')
         if self.laser_range.size != 0:
             # use nanargmax as there are nan's in laser_range added to replace 0's
             lr2i = np.nanargmax(self.laser_range)
-            self.get_logger().info('Picked direction: %d %f m' % (lr2i, self.laser_range[lr2i]))
+            #Get the map data first
+       # def __init__(self):
+            #super().__init__('OccupancyGrid')
+        #self.subscription = self.create_subscription(OccupancyGrid,'map',self.listener_callback,qos_profile_sensor_data)
+            #avoid unused variable warning
+        #self.subscription 
         else:
             lr2i = 0
             self.get_logger().info('No data!')
+   # def listener_callback(self,msg):
+        #for i in range(360):
+         #   if 1<=self.occ_callback(msg)[i]<=100: 
+                #angle = i   
+        #lr2i = 90
+                # # #Print to file
+        
+                #break
+        self.get_logger().info('Picked direction: %d %f m' % ( lr2i, ))
+
+        #np.savetxt("lr2idata.####.txt",lr2i)
 
         # rotate to that direction
         self.rotatebot(float(lr2i))
-
+        
         # start moving
         self.get_logger().info('Start moving')
         twist = Twist()
@@ -210,7 +236,7 @@ class AutoNav(Node):
         # reliably with this
         time.sleep(1)
         self.publisher_.publish(twist)
-
+    
 
     def stopbot(self):
         self.get_logger().info('In stopbot')

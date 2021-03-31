@@ -23,13 +23,14 @@ import numpy as np
 import math
 import cmath
 import time
+import cv2
 
 # constants
 rotatechange = 0.1
 speedchange = 0.05
 occ_bins = [-1, 0, 100, 101]
-stop_distance = 0.25
-front_angle = 30
+stop_distance = 0.50
+front_angle = 50
 front_angles = range(-front_angle,front_angle+1,1)
 scanfile = 'lidar.txt'
 mapfile = 'map.txt'
@@ -64,7 +65,7 @@ class AutoNav(Node):
         
         # create publisher for moving TurtleBot
         self.publisher_ = self.create_publisher(Twist,'cmd_vel',10)
-        # self.get_logger().info('Created publisher')
+        #self.get_logger().info('Created publisher')
         
         # create subscription to track orientation
         self.odom_subscription = self.create_subscription(
@@ -72,7 +73,7 @@ class AutoNav(Node):
             'odom',
             self.odom_callback,
             10)
-        # self.get_logger().info('Created subscriber')
+        #self.get_logger().info('Created subscriber')
         self.odom_subscription  # prevent unused variable warning
         # initialize variables
         self.roll = 0
@@ -85,6 +86,7 @@ class AutoNav(Node):
             'map',
             self.occ_callback,
             qos_profile_sensor_data)
+        
         self.occ_subscription  # prevent unused variable warning
         self.occdata = np.array([])
         
@@ -99,21 +101,21 @@ class AutoNav(Node):
 
 
     def odom_callback(self, msg):
-        # self.get_logger().info('In odom_callback')
+        #self.get_logger().info('In odom_callback')
         orientation_quat =  msg.pose.pose.orientation
         self.roll, self.pitch, self.yaw = euler_from_quaternion(orientation_quat.x, orientation_quat.y, orientation_quat.z, orientation_quat.w)
 
 
     def occ_callback(self, msg):
-        # self.get_logger().info('In occ_callback')
+        #self.get_logger().info('In occ_callback')
         # create numpy array
         msgdata = np.array(msg.data)
         # compute histogram to identify percent of bins with -1
-        # occ_counts = np.histogram(msgdata,occ_bins)
+        occ_counts = np.histogram(msgdata,occ_bins)
         # calculate total number of bins
-        # total_bins = msg.info.width * msg.info.height
+        total_bins = msg.info.width * msg.info.height
         # log the info
-        # self.get_logger().info('Unmapped: %i Unoccupied: %i Occupied: %i Total: %i' % (occ_counts[0][0], occ_counts[0][1], occ_counts[0][2], total_bins))
+        self.get_logger().info('Unmapped: %i Unoccupied: %i Occupied: %i Total: %i' % (occ_counts[0][0], occ_counts[0][1], occ_counts[0][2], total_bins))
 
         # make msgdata go from 0 instead of -1, reshape into 2D
         oc2 = msgdata + 1
@@ -122,7 +124,10 @@ class AutoNav(Node):
         self.occdata = np.uint8(oc2.reshape(msg.info.height,msg.info.width))
         # print to file
         np.savetxt(mapfile, self.occdata)
-
+        #LINK TO CLOSURE FUNCTION
+        self.closure(self.occdata)
+        
+        
 
     def scan_callback(self, msg):
         # self.get_logger().info('In scan_callback')
@@ -189,11 +194,20 @@ class AutoNav(Node):
 
 
     def pick_direction(self):
-        # self.get_logger().info('In pick_direction')
-        if self.laser_range.size != 0:
+        self.get_logger().info('In pick_direction')
+        #if self.laser_range.size != 0:
             # use nanargmax as there are nan's in laser_range added to replace 0's
-            lr2i = np.nanargmax(self.laser_range)
-            self.get_logger().info('Picked direction: %d %f m' % (lr2i, self.laser_range[lr2i]))
+         #   lr2i = np.nanargmax(self.laser_range)
+            #self.get_logger().info('Picked direction: %d %f m' % (lr2i, self.laser_range[lr2i]))
+        mapstuff = self.occdata
+        lr2i = 0
+        result = np.array(np.where(mapstuff==0))
+        #np.set_printoptions(threshold=np.inf)
+        #print(result)
+        if result.size != 0 :
+            #lr2i = self.laser_range(result[0][0])
+            lr2i = result[0][0]
+            self.get_logger().info("%f" %result[0][0])
         else:
             lr2i = 0
             self.get_logger().info('No data!')
@@ -213,13 +227,71 @@ class AutoNav(Node):
 
 
     def stopbot(self):
-        self.get_logger().info('In stopbot')
+        #self.get_logger().info('In stopbot')
         # publish to cmd_vel to move TurtleBot
         twist = Twist()
         twist.linear.x = 0.0
         twist.angular.z = 0.0
         # time.sleep(1)
         self.publisher_.publish(twist)
+        
+    def closure(self,mapdata):
+    # This function checks if mapdata contains a closed contour. The function
+    # assumes that the raw map data from SLAM has been modified so that
+    # -1 (unmapped) is now 0, and 0 (unoccupied) is now 1, and the occupied
+    # values go from 1 to 101.
+
+    # According to: https://stackoverflow.com/questions/17479606/detect-closed-contours?rq=1
+    # closed contours have larger areas than arc length, while open contours have larger
+    # arc length than area. But in my experience, open contours can have areas larger than
+    # the arc length, but closed contours tend to have areas much larger than the arc length
+    # So, we will check for contour closure by checking if any of the contours
+    # have areas that are more than 10 times larger than the arc length
+    # This value may need to be adjusted with more testing.
+        ALTHRESH = 10
+    # We will slightly fill in the contours to make them easier to detect
+        DILATE_PIXELS = 3
+
+    # assumes mapdata is uint8 and consists of 0 (unmapped), 1 (unoccupied),
+    # and other positive values up to 101 (occupied)
+    # so we will apply a threshold of 2 to create a binary image with the
+    # occupied pixels set to 255 and everything else is set to 0
+    # we will use OpenCV's threshold function for this
+        ret,img2 = cv2.threshold(mapdata,2,255,0)
+    # we will perform some erosion and dilation to fill out the contours a
+    # little bitelf,
+        element = cv2.getStructuringElement(cv2.MORPH_CROSS,(DILATE_PIXELS,DILATE_PIXELS))
+    # img3 = cv2.erode(img2,element)
+        img4 = cv2.dilate(img2,element)
+    # use OpenCV's findContours function to identify contours
+    # OpenCV version 3 changed the number of return arguments, so we
+    # need to check the version of OpenCV installed so we know which argument
+    # to grab
+        fc = cv2.findContours(img4, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_NONE)
+        (major, minor, _) = cv2.__version__.split(".")
+        if(major == '3'):
+            contours = fc[1]
+        else:
+            contours = fc[0]
+    # find number of contours returned
+        lc = len(contours)
+        #self.get_logger.info('# Contours: %s' % str(lc))
+    # create array to compute ratio of area to arc length
+        cAL = np.zeros((lc,2))
+        for i in range(lc):
+            cAL[i,0] = cv2.contourArea(contours[i])
+            cAL[i,1] = cv2.arcLength(contours[i], True)
+
+    # closed contours tend to have a much higher area to arc length ratio,
+    # so if there are no contours with high ratios, we can safely say
+    # there are no closed contours
+        cALratio = cAL[:,0]/cAL[:,1]
+        #self.get_logger().info('Closure: %s' % str(cALratio))
+        if np.any(cALratio > ALTHRESH):
+            return True
+        else:
+            return False
+
 
 
     def mover(self):
