@@ -23,6 +23,8 @@ import numpy as np
 import math
 import cmath
 import time
+import tf2_ros
+from tf2_ros import LookupException, ConnectivityException, ExtrapolationException
 
 # constants
 rotatechange = 0.1
@@ -33,6 +35,13 @@ front_angle = 30
 front_angles = range(-front_angle,front_angle+1,1)
 scanfile = 'lidar.txt'
 mapfile = 'map.txt'
+MAP_OPEN_LIST = 1
+MAP_CLOSE_LIST = 2
+FRONTIER_OPEN_LIST = 3
+FRONTIER_CLOSE_LIST = 4
+OCC_THRESHOLD = 10
+N_S = 8
+completed = False
 
 # code from https://automaticaddison.com/how-to-convert-a-quaternion-into-euler-angles-in-python/
 def euler_from_quaternion(x, y, z, w):
@@ -56,6 +65,9 @@ def euler_from_quaternion(x, y, z, w):
     yaw_z = math.atan2(t3, t4)
 
     return roll_x, pitch_y, yaw_z # in radians
+
+
+
 
 class AutoNav(Node):
 
@@ -97,29 +109,88 @@ class AutoNav(Node):
         self.scan_subscription  # prevent unused variable warning
         self.laser_range = np.array([])
 
+        self.tfBuffer = tf2_ros.Buffer()
+        self.tfListener = tf2_ros.TransformListener(self.tfBuffer, self)
+        
+        self.visited = []
+        self.frontierpoints = []
 
+ 
+        
     def odom_callback(self, msg):
-        # self.get_logger().info('In odom_callback')
+        #self.get_logger().info('In odom_callback')
+
         orientation_quat =  msg.pose.pose.orientation
         self.roll, self.pitch, self.yaw = euler_from_quaternion(orientation_quat.x, orientation_quat.y, orientation_quat.z, orientation_quat.w)
 
+    def get_path(self,current,destination):
+        
+
+
+    def find_unoccupied(self,occ_map,pos):
+        queue = []
+        queue.append((pos[0],pos[1]))
+        visited = []
+        while queue:
+            current_pos = queue.pop(0)
+            x = current_pos[0]
+            y = current_pos[1]
+            visited.append(current_pos)
+            if occ_map[x][y] == 255:
+                result = "( " + str(x) + " , " + str(y) + " )"
+                return result
+            elif occ_map[x][y] == 100:
+                continue
+            neighbors = ((x,y+1) , (x,y-1) , (x+1,y) , (x-1,y))
+            for neighbor in neighbors:
+                if neighbor not in queue and neighbor not in visited:
+                    queue.append(neighbor)
+        return None
 
     def occ_callback(self, msg):
-        # self.get_logger().info('In occ_callback')
+        #self.get_logger().info('In occ_callback')
         # create numpy array
         msgdata = np.array(msg.data)
         # compute histogram to identify percent of bins with -1
-        # occ_counts = np.histogram(msgdata,occ_bins)
+        
+        occ_counts = np.histogram(msgdata,occ_bins)
         # calculate total number of bins
-        # total_bins = msg.info.width * msg.info.height
+        total_bins = msg.info.width * msg.info.height
         # log the info
-        # self.get_logger().info('Unmapped: %i Unoccupied: %i Occupied: %i Total: %i' % (occ_counts[0][0], occ_counts[0][1], occ_counts[0][2], total_bins))
-
+        self.get_logger().info('Unmapped: %i Unoccupied: %i Occupied: %i Total: %i' % (occ_counts[0][0], occ_counts[0][1], occ_counts[0][2], total_bins))
+        
         # make msgdata go from 0 instead of -1, reshape into 2D
-        oc2 = msgdata + 1
+        oc2 = msgdata
         # reshape to 2D array using column order
         # self.occdata = np.uint8(oc2.reshape(msg.info.height,msg.info.width,order='F'))
         self.occdata = np.uint8(oc2.reshape(msg.info.height,msg.info.width))
+        print(self.occdata)
+        #get map resolution
+        map_res = msg.info.resolution
+        # get map origin struct has fields of x, y, and z
+        map_origin = msg.info.origin.position
+        try:
+            trans = self.tfBuffer.lookup_transform('map', 'base_link', rclpy.time.Time())
+        except (LookupException, ConnectivityException, ExtrapolationException) as e:
+            self.get_logger().info('No transformation found')
+            return
+                
+        cur_pos = trans.transform.translation
+        cur_rot = trans.transform.rotation
+        
+        # get map grid positions for x, y position
+        grid_x = round((cur_pos.x - map_origin.x) / map_res)
+        grid_y = round(((cur_pos.y - map_origin.y) / map_res))
+
+        self.get_logger().info("Position now is %i %i " % (grid_x,grid_y))
+        try:
+            nearest_frontier = self.find_unoccupied(occ_map=self.occdata, pos=(grid_x,grid_y))
+            
+            self.get_logger().info('Nearest frontier is %s' % nearest_frontier )
+        except:
+            self.get_logger().info('Map is completed!' )
+            
+        
         # print to file
         np.savetxt(mapfile, self.occdata)
 
@@ -181,12 +252,13 @@ class AutoNav(Node):
             c_dir_diff = np.sign(c_change.imag)
             # self.get_logger().info('c_change_dir: %f c_dir_diff: %f' % (c_change_dir, c_dir_diff))
 
+        
         self.get_logger().info('End Yaw: %f' % math.degrees(current_yaw))
+        
         # set the rotation speed to 0
         twist.angular.z = 0.0
         # stop the rotation
         self.publisher_.publish(twist)
-
 
     def pick_direction(self):
         # self.get_logger().info('In pick_direction')
@@ -227,17 +299,16 @@ class AutoNav(Node):
             # initialize variable to write elapsed time to file
             # contourCheck = 1
 
-            # find direction with the largest distance from the Lidar,
-            # rotate to that direction, and start moving
             self.pick_direction()
 
             while rclpy.ok():
+                
                 if self.laser_range.size != 0:
                     # check distances in front of TurtleBot and find values less
                     # than stop_distance
                     lri = (self.laser_range[front_angles]<float(stop_distance)).nonzero()
-                    # self.get_logger().info('Distances: %s' % str(lri))
-
+                    #self.get_logger().info('Distances: %s' % str(lri))
+                    
                     # if the list is not empty
                     if(len(lri[0])>0):
                         # stop moving
