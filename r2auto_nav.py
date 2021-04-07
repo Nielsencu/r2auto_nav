@@ -26,23 +26,19 @@ import time
 import tf2_ros
 from tf2_ros import LookupException, ConnectivityException, ExtrapolationException
 from .a_star import a_star_search
+from math import atan2
+import scipy.stats
+from .rviz import RvizInterface
 
 # constants
 rotatechange = 0.1
 speedchange = 0.05
-occ_bins = [-1, 0, 100, 101]
+occ_bins = [-1, 0, 50, 100]
 stop_distance = 0.25
 front_angle = 30
 front_angles = range(-front_angle,front_angle+1,1)
 scanfile = 'lidar.txt'
 mapfile = 'map.txt'
-MAP_OPEN_LIST = 1
-MAP_CLOSE_LIST = 2
-FRONTIER_OPEN_LIST = 3
-FRONTIER_CLOSE_LIST = 4
-OCC_THRESHOLD = 10
-N_S = 8
-completed = False
 
 # code from https://automaticaddison.com/how-to-convert-a-quaternion-into-euler-angles-in-python/
 def euler_from_quaternion(x, y, z, w):
@@ -116,9 +112,11 @@ class AutoNav(Node):
         self.visited = []
         self.frontierpoints = []
 
-        self.x = 0
-        self.y = 0
+        self.x = None
+        self.y = None
 
+        self.path = []
+        self.goal = None
  
         
     def odom_callback(self, msg):
@@ -132,23 +130,24 @@ class AutoNav(Node):
     
     def find_unoccupied(self,pos):
         def is_frontier(x,y):
-            if self.occdata[y][x] != 0:
+            if self.occdata[y][x] in (2,3):
                 return False
             neighbors = ((x,y+1) , (x,y-1) , (x+1,y) , (x-1,y))
             for i in neighbors:
-                print(i, self.occdata[i[1]][i[0]])
-                if self.occdata[i[1]][i[0]] != 0:
+                #print(i, self.occdata[i[1]][i[0]])
+                if self.occdata[i[1]][i[0]] in (2,3):
                     return False
             return True
         queue = []
         queue.append((pos[0],pos[1]))
         visited = []
-        while queue:
+        #condition = True
+        while len(queue) > 0:
             current_pos = queue.pop(0)
             x = current_pos[0]
             y = current_pos[1]
             visited.append(current_pos)
-            if 70 <= self.occdata[y][x] <= 101: # Flag this as an obstacle, no need to check if its an frontier
+            if self.occdata[y][x] == 3: # Flag this as an obstacle, no need to check if its an frontier
                 continue
             elif is_frontier(x,y):
                 return (x,y)
@@ -159,22 +158,32 @@ class AutoNav(Node):
         return None
 
     def occ_callback(self, msg):
-        #self.get_logger().info('In occ_callback')
+        self.get_logger().info('In occ_callback')
         # create numpy array
-        msgdata = np.array(msg.data)
+        occdata = np.array(msg.data)
         # compute histogram to identify percent of bins with -1
         
-        occ_counts = np.histogram(msgdata,occ_bins)
+        occ_counts, edges, binnum = scipy.stats.binned_statistic(occdata, np.nan, statistic='count', bins=occ_bins)
         # calculate total number of bins
         total_bins = msg.info.width * msg.info.height
-        # log the info
-        self.get_logger().info('Unmapped: %i Unoccupied: %i Occupied: %i Total: %i' % (occ_counts[0][0], occ_counts[0][1], occ_counts[0][2], total_bins))
         
         # make msgdata go from 0 instead of -1, reshape into 2D
-        oc2 = msgdata + 1
+        
         # reshape to 2D array using column order
-        # self.occdata = np.uint8(oc2.reshape(msg.info.height,msg.info.width,order='F'))
-        self.occdata = np.uint8(oc2.reshape(msg.info.height,msg.info.width))
+        self.occdata = np.uint8(binnum.reshape(msg.info.height,msg.info.width))
+
+        #Inflating obstacles
+        obstacles = []
+        for i in range(len(self.occdata) -1):
+            for j in range(len(self.occdata[0])-1):
+                if self.occdata[i][j] == 3:
+                    obstacles.append((i,j))
+        for i in obstacles:
+            self.occdata[i[0] + 1][i[1]] = 3
+            self.occdata[i[0] - 1][i[1]] = 3
+            self.occdata[i[0]][i[1] + 1] = 3
+            self.occdata[i[0]][i[1] - 1] = 3
+                    
         #get map resolution
         map_res = msg.info.resolution
         # get map origin struct has fields of x, y, and z
@@ -195,16 +204,20 @@ class AutoNav(Node):
         self.x = grid_x
         self.y = grid_y
 
-        # set current robot location to -1
-        self.occdata[grid_y][grid_x] = -1
+        # set current robot location to 0
+        self.occdata[grid_y][grid_x] = 0
 
         self.get_logger().info("Map size is %i %i " % (len(self.occdata), len(self.occdata[0])))
         self.get_logger().info("Position now is %i %i " % (grid_x,grid_y))
 
-            
-        
+        visualization = RvizInterface(self.occdata, msg)
+
+        if self.path:
+            self.get_logger().info("Hey path is published")
+            visualization.publishPath(self.path)
+
         # print to file
-        np.savetxt(mapfile, self.occdata, fmt='%d', delimiter=' ')
+        np.savetxt(mapfile, self.occdata, fmt='%d', delimiter='')
 
 
     def scan_callback(self, msg):
@@ -307,7 +320,6 @@ class AutoNav(Node):
 
 
     def mover(self):
-        x= 0
         try:
             # initialize variable to write elapsed time to file
             # contourCheck = 1
@@ -317,47 +329,56 @@ class AutoNav(Node):
             while rclpy.ok():
                 current = (self.x,self.y)
                 print("Hey my position in mover is,",current)
-                try:
+                if self.x == None and self.y == None:
+                    print("Robot's coordinates not detected")
+                else:
                     nearest_frontier = self.find_unoccupied(pos=current)
                     if nearest_frontier == None:
                         self.get_logger().info('Map is completed')
                         return
                     print("Nearest frontier is " ,nearest_frontier)
-                    # frontier_string = "(" + str(nearest_frontier[0]) + " , " + str(nearest_frontier[1]) + ")"
-                    # self.get_logger().info('Nearest frontier is %s' % frontier_string )
-                    path = a_star_search(self.occdata, current, nearest_frontier)
-                    for i in path:
-                    return
-                except Exception as e:
-                    print(e)
-                
-
-                # if self.laser_range.size != 0:
-                #     # check distances in front of TurtleBot and find values less
-                #     # than stop_distance
-                #     lri = (self.laser_range[front_angles]<float(stop_distance)).nonzero()
-                #     #self.get_logger().info('Distances: %s' % str(lri))
                     
-                #     # if the list is not empty
-                #     if(len(lri[0])>0):
-                #         # stop moving
-                #         self.stopbot()
-                #         # find direction with the largest distance from the Lidar
-                #         # rotate to that direction
-                #         # start moving
-                #         self.pick_direction()
-                    
-                # allow the callback functions to run
-                rclpy.spin_once(self)
+                    print("Path is :" ,self.path)
+                    if self.path:
+                        goal = self.path[0]
+                        inc_x = goal[0] - self.x
+                        inc_y = goal[1] - self.y
+                        angle_to_goal = atan2(inc_y,inc_x)
+                        angle_in_deg = angle_to_goal * 180 / 3.142
+                        
+                        print(angle_to_goal, self.yaw)
+                        while abs(self.yaw - angle_to_goal) > 0.1:
+                            self.rotatebot(10)
+                            rclpy.spin_once(self)   
 
+                        print("Goal now is", goal[0] , goal[1])
+                        print("Now i'm at ", self.x , self.y)
+                        if self.x == goal[0] and self.y == goal[1]:
+                            print("Goal reached")
+                            self.stopbot()
+                            self.path.pop(0)
+                        else:
+                            # start moving
+                            self.get_logger().info('Start moving')
+                            twist = Twist()
+                            twist.linear.x = speedchange
+                            twist.angular.z = 0.0
+                            time.sleep(1)
+                            self.publisher_.publish(twist)                        
+
+                        # not sure if this is really necessary, but things seem to work more
+                        # reliably with this
+                    else:
+                        self.path = a_star_search(self.occdata, current, nearest_frontier)
+                rclpy.spin_once(self)   
+               # allow the callback functions to run
         except Exception as e:
             print(e)
-        
-        # Ctrl-c detected
+        # # Ctrl-c detected
         finally:
             # stop moving
             self.stopbot()
-
+                
 
 def main(args=None):
     rclpy.init(args=args)

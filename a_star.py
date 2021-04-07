@@ -63,7 +63,7 @@ def a_star_search(map,start,dest):
                         cell_map[x][y].f = fNew
                         cell_map[x][y].g = gNew
                         cell_map[x][y].h = hNew
-                        #print("At", x, y, "Hey parent is updated,", cell_map[x][y].parent_i, cell_map[x][y].parent_j, " to ", current[1][0], current[1][1])
+                        print("At", x, y, "Hey parent is updated,", cell_map[x][y].parent_i, cell_map[x][y].parent_j, " to ", current[1][0], current[1][1])
                         cell_map[x][y].parent_i = current[1][0]
                         cell_map[x][y].parent_j = current[1][1]
                         #print(get_parent(cell_map,x,y))
@@ -110,7 +110,7 @@ def popOpenList(anyList):
     return anyList.pop(0)
 
 def isUnblocked(cell_map,x ,y):
-    return cell_map[x][y].occ_value < 50
+    return cell_map[y][x].occ_value in (1,2)
 
 def isValid(x,y, row , col):
     return x >= 0 and x < row and y >= 0 and y < col
@@ -132,7 +132,7 @@ def tracePath(cell_map, dest):
         row = temp_row
         col = temp_col
     path.insert(0,(row,col))
-    print(path)
+    #print(path)
     return path
 
 
