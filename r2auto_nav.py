@@ -12,10 +12,11 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+
 import rclpy
 from rclpy.node import Node
 from nav_msgs.msg import Odometry
-from geometry_msgs.msg import Twist
+from geometry_msgs.msg import Twist, Point
 from rclpy.qos import qos_profile_sensor_data
 from sensor_msgs.msg import LaserScan
 from nav_msgs.msg import OccupancyGrid
@@ -29,16 +30,20 @@ from .a_star import a_star_search
 from math import atan2
 import scipy.stats
 from .rviz import RvizInterface
+from PIL import Image 
+import matplotlib.pyplot as plt
 
 # constants
 rotatechange = 0.1
 speedchange = 0.05
-occ_bins = [-1, 0, 50, 100]
+occ_bins = [-1, 0, 40, 100]
 stop_distance = 0.25
 front_angle = 30
 front_angles = range(-front_angle,front_angle+1,1)
 scanfile = 'lidar.txt'
 mapfile = 'map.txt'
+map_bg_color = 1
+count = 0
 
 # code from https://automaticaddison.com/how-to-convert-a-quaternion-into-euler-angles-in-python/
 def euler_from_quaternion(x, y, z, w):
@@ -62,9 +67,6 @@ def euler_from_quaternion(x, y, z, w):
     yaw_z = math.atan2(t3, t4)
 
     return roll_x, pitch_y, yaw_z # in radians
-
-
-
 
 class AutoNav(Node):
 
@@ -116,7 +118,8 @@ class AutoNav(Node):
         self.y = None
 
         self.path = []
-        self.goal = None
+        self.goal = Point()
+        self.nearest_frontier = Point()
  
         
     def odom_callback(self, msg):
@@ -162,6 +165,8 @@ class AutoNav(Node):
         # create numpy array
         occdata = np.array(msg.data)
         # compute histogram to identify percent of bins with -1
+        iwidth = msg.info.width
+        iheight = msg.info.height
         
         occ_counts, edges, binnum = scipy.stats.binned_statistic(occdata, np.nan, statistic='count', bins=occ_bins)
         # calculate total number of bins
@@ -172,30 +177,33 @@ class AutoNav(Node):
         # reshape to 2D array using column order
         self.occdata = np.uint8(binnum.reshape(msg.info.height,msg.info.width))
 
-        #Inflating obstacles
-        obstacles = []
-        for i in range(len(self.occdata) -1):
-            for j in range(len(self.occdata[0])-1):
-                if self.occdata[i][j] == 3:
-                    obstacles.append((i,j))
-        for i in obstacles:
-            self.occdata[i[0] + 1][i[1]] = 3
-            self.occdata[i[0] - 1][i[1]] = 3
-            self.occdata[i[0]][i[1] + 1] = 3
-            self.occdata[i[0]][i[1] - 1] = 3
+        # #Inflating obstacles
+        # obstacles = []
+        # for i in range(len(self.occdata) -1):
+        #     for j in range(len(self.occdata[0])-1):
+        #         if self.occdata[i][j] == 3:
+        #             obstacles.append((i,j))
+        # for i in obstacles:
+        #     self.occdata[i[0] + 1][i[1]] = 3
+        #     self.occdata[i[0] - 1][i[1]] = 3
+        #     self.occdata[i[0]][i[1] + 1] = 3
+        #     self.occdata[i[0]][i[1] - 1] = 3
                     
         #get map resolution
         map_res = msg.info.resolution
         # get map origin struct has fields of x, y, and z
         map_origin = msg.info.origin.position
         try:
-            trans = self.tfBuffer.lookup_transform('map', 'base_link', rclpy.time.Time())
+            trans = self.tfBuffer.lookup_transform('map', 'base_link', rclpy.time.Time(), rclpy.time.Duration(seconds = 0.5))
         except (LookupException, ConnectivityException, ExtrapolationException) as e:
+            print(e)
             self.get_logger().info('No transformation found')
             return
                 
         cur_pos = trans.transform.translation
         cur_rot = trans.transform.rotation
+
+        roll, pitch, yaw = euler_from_quaternion(cur_rot.x, cur_rot.y, cur_rot.z, cur_rot.w)
         
         # get map grid positions for x, y position
         grid_x = round((cur_pos.x - map_origin.x) / map_res)
@@ -210,11 +218,59 @@ class AutoNav(Node):
         self.get_logger().info("Map size is %i %i " % (len(self.occdata), len(self.occdata[0])))
         self.get_logger().info("Position now is %i %i " % (grid_x,grid_y))
 
-        visualization = RvizInterface(self.occdata, msg)
+        if(self.occdata.any()):
+            visualization = RvizInterface(self.occdata, msg)
 
         if self.path:
             self.get_logger().info("Hey path is published")
             visualization.publishPath(self.path)
+
+        # create image from 2D array using PIL
+        img = Image.fromarray(self.occdata)
+        # find center of image
+        i_centerx = iwidth/2
+        i_centery = iheight/2
+        # find how much to shift the image to move grid_x and grid_y to center of image
+        shift_x = round(grid_x - i_centerx)
+        shift_y = round(grid_y - i_centery)
+        # self.get_logger().info('Shift Y: %i Shift X: %i' % (shift_y, shift_x))
+
+        # pad image to move robot position to the center
+        # adapted from https://note.nkmk.me/en/python-pillow-add-margin-expand-canvas/ 
+        left = 0
+        right = 0
+        top = 0
+        bottom = 0
+        if shift_x > 0:
+            # pad right margin
+            right = 2 * shift_x
+        else:
+            # pad left margin
+            left = 2 * (-shift_x)
+            
+        if shift_y > 0:
+            # pad bottom margin
+            bottom = 2 * shift_y
+        else:
+            # pad top margin
+            top = 2 * (-shift_y)
+            
+        # create new image
+        new_width = iwidth + right + left
+        new_height = iheight + top + bottom
+        img_transformed = Image.new(img.mode, (new_width, new_height), map_bg_color)
+        img_transformed.paste(img, (left, top))
+
+        # rotate by 90 degrees so that the forward direction is at the top of the image
+        rotated = img_transformed.rotate(np.degrees(yaw)-90, expand=True, fillcolor=map_bg_color)
+
+        # show the image using grayscale map
+        # plt.imshow(img, cmap='gray', origin='lower')
+        # plt.imshow(img_transformed, cmap='gray', origin='lower')
+        plt.imshow(rotated, cmap='gray', origin='lower')
+        plt.draw_all()
+        # pause to make sure the plot gets created
+        plt.pause(0.00000000001)
 
         # print to file
         np.savetxt(mapfile, self.occdata, fmt='%d', delimiter='')
@@ -286,27 +342,58 @@ class AutoNav(Node):
         self.publisher_.publish(twist)
 
     def pick_direction(self):
-        # self.get_logger().info('In pick_direction')
-        if self.laser_range.size != 0:
-            # use nanargmax as there are nan's in laser_range added to replace 0's
-            lr2i = np.nanargmax(self.laser_range)
-            self.get_logger().info('Picked direction: %d %f m' % (lr2i, self.laser_range[lr2i]))
-        else:
-            lr2i = 0
-            self.get_logger().info('No data!')
+        global count
+        count +=1
+        self.goal.x = float(self.path[0][0])
+        self.goal.y = float(self.path[0][1])
+        print("Goal now is", self.goal.x , self.goal.y)
+        print("Now i'm at ", self.x , self.y)
+        inc_x = self.goal.x - self.x
+        inc_y = self.goal.y - self.y
+        angle_to_goal = atan2(inc_y,inc_x)
+        if angle_to_goal > math.pi:
+            angle_to_goal = -(angle_to_goal - math.pi)
 
-        # rotate to that direction
-        self.rotatebot(float(lr2i))
-
-        # start moving
-        self.get_logger().info('Start moving')
+        print("I want go to :", angle_to_goal, "I'm facing", self.yaw)
         twist = Twist()
-        twist.linear.x = speedchange
-        twist.angular.z = 0.0
-        # not sure if this is really necessary, but things seem to work more
-        # reliably with this
-        time.sleep(1)
-        self.publisher_.publish(twist)
+
+        while abs(self.yaw - angle_to_goal) > 0.1:
+            print(" changing direction" , self.yaw , angle_to_goal)
+            
+            difference = self.yaw - angle_to_goal
+            if difference < 0:
+                if(difference < -math.pi):
+                    twist.angular.z = -0.2
+                else:
+                    twist.linear.x = 0.0
+                    twist.angular.z = 0.2
+            elif difference > 0:
+                if(difference > math.pi):
+                    twist.angular.z = 0.2
+                else:
+                    twist.linear.x = 0.0
+                    twist.angular.z = -0.2
+            self.publisher_.publish(twist)
+            # else:
+            #     twist.linear.x = 0.0
+            #     twist.angular.z = -0.3
+            #     time.sleep(1)
+            #     self.publisher_.publish(twist)
+            rclpy.spin_once(self)  
+        rclpy.spin_once(self)
+        if distance((self.x,self.y), (self.goal.x , self.goal.y)) <= 1.5:
+            print(distance((self.x,self.y), (self.goal.x , self.goal.y)))
+            print("Goal reached")
+            self.stopbot()
+            print("Path popped : " ,self.path.pop(0))
+            print("path now is : ", self.path)
+        else:
+            # start moving
+            self.get_logger().info('Start moving')
+            twist.linear.x = speedchange
+            twist.angular.z = 0.0
+            self.publisher_.publish(twist) 
+
 
 
     def stopbot(self):
@@ -315,63 +402,77 @@ class AutoNav(Node):
         twist = Twist()
         twist.linear.x = 0.0
         twist.angular.z = 0.0
-        # time.sleep(1)
         self.publisher_.publish(twist)
 
 
     def mover(self):
+        global count
         try:
             # initialize variable to write elapsed time to file
             # contourCheck = 1
+            rclpy.spin_once(self)
             current = (self.x,self.y)
             # self.pick_direction()
 
             while rclpy.ok():
                 current = (self.x,self.y)
-                print("Hey my position in mover is,",current)
                 if self.x == None and self.y == None:
                     print("Robot's coordinates not detected")
                 else:
                     nearest_frontier = self.find_unoccupied(pos=current)
-                    if nearest_frontier == None:
+                    self.nearest_frontier.x = float(nearest_frontier[0])
+                    self.nearest_frontier.y = float(nearest_frontier[1])
+                    if not(nearest_frontier):
                         self.get_logger().info('Map is completed')
                         return
-                    print("Nearest frontier is " ,nearest_frontier)
-                    
+                    print("Hey my position in mover is,",current)                        
+                    print("Nearest frontier is " ,self.nearest_frontier.x , self.nearest_frontier.y)
+                    print("My goal is ", self.goal.x , self.goal.y)
                     print("Path is :" ,self.path)
                     if self.path:
-                        goal = self.path[0]
-                        inc_x = goal[0] - self.x
-                        inc_y = goal[1] - self.y
-                        angle_to_goal = atan2(inc_y,inc_x)
-                        angle_in_deg = angle_to_goal * 180 / 3.142
+                        # if(count == 30):
+                        #     self.path = a_star_search(self.occdata, (self.x,self.y), (int(self.nearest_frontier.x) , int(self.nearest_frontier.y)))
+                        #     if(not(self.path)):
+                        #         twist = Twist()
+                        #         self.get_logger().info('Start moving')
+                        #         twist.linear.x = 0.03
+                        #         twist.angular.z = 0.0
+                        #         self.publisher_.publish(twist) 
+                        #     count = 0
+                        # if self.laser_range.size != 0:
+                        #     # check distances in front of TurtleBot and find values less
+                        #     # than stop_distance
+                        #     lri = (self.laser_range[front_angles]<float(stop_distance)).nonzero()
+                        #     # self.get_logger().info('Distances: %s' % str(lri))
+
+                        #     # if the list is not empty
+                        #     if(len(lri[0])>0):
+                        #         # stop moving
+                        #         self.stopbot()
+                        #         print("Too close, moving backwards")
+                        #         print(lri)
+                        #         print("Too close, finding new path")
+                        #         self.path = a_star_search(self.occdata, (self.x,self.y), self.nearest_frontier)
                         
-                        print(angle_to_goal, self.yaw)
-                        while abs(self.yaw - angle_to_goal) > 0.1:
-                            self.rotatebot(10)
-                            rclpy.spin_once(self)   
-
-                        print("Goal now is", goal[0] , goal[1])
-                        print("Now i'm at ", self.x , self.y)
-                        if self.x == goal[0] and self.y == goal[1]:
-                            print("Goal reached")
-                            self.stopbot()
-                            self.path.pop(0)
-                        else:
-                            # start moving
-                            self.get_logger().info('Start moving')
-                            twist = Twist()
-                            twist.linear.x = speedchange
-                            twist.angular.z = 0.0
-                            time.sleep(1)
-                            self.publisher_.publish(twist)                        
-
-                        # not sure if this is really necessary, but things seem to work more
-                        # reliably with this
+                        # if self.x - self.path[0][0] > 0 or self.y - self.path[0][1] > 0:
+                        #     print("Updating path")
+                        #     self.path = a_star_search(self.occdata, current, self.nearest_frontier)
+                        #     if(not(self.path)):
+                        #         self.get_logger().info('Map is completed')
+                        #         return
+                        self.pick_direction()
                     else:
-                        self.path = a_star_search(self.occdata, current, nearest_frontier)
-                rclpy.spin_once(self)   
+                        self.path = a_star_search(self.occdata,(self.x , self.y), (int(self.nearest_frontier.x) , int(self.nearest_frontier.y)))
+                        if(not(self.path)):
+                            # start moving
+                            twist = Twist()
+                            self.get_logger().info('Start moving')
+                            twist.linear.x = 0.03
+                            twist.angular.z = 0.0
+                            self.publisher_.publish(twist) 
+
                # allow the callback functions to run
+                rclpy.spin_once(self)
         except Exception as e:
             print(e)
         # # Ctrl-c detected
@@ -399,3 +500,6 @@ def main(args=None):
 
 if __name__ == '__main__':
     main()
+
+def distance(point1,point2):
+    return ((point1[0] - point2[0])**2 + (point1[1] - point2[1])**2 )**0.5
