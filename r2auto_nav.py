@@ -36,7 +36,7 @@ import matplotlib.pyplot as plt
 # constants
 rotatechange = 0.1
 speedchange = 0.05
-occ_bins = [-1, 0, 40, 100]
+occ_bins = [-1, 0, 50, 100]
 stop_distance = 0.25
 front_angle = 30
 front_angles = range(-front_angle,front_angle+1,1)
@@ -132,13 +132,10 @@ class AutoNav(Node):
         pass        
     
     def find_unoccupied(self,pos):
-        def is_frontier(x,y):
-            if self.occdata[y][x] in (2,3):
-                return False
-            neighbors = ((x,y+1) , (x,y-1) , (x+1,y) , (x-1,y))
-            for i in neighbors:
-                #print(i, self.occdata[i[1]][i[0]])
-                if self.occdata[i[1]][i[0]] in (2,3):
+        def is_frontier(i,j):
+            neighbors = ((i,j) , (i,j+1), (i + 1,j + 1), (i + 1,j), (i+1,j -1 ), (i,j -1) , (i-1,j-1), (i-1,j), (i-1,j + 1))
+            for (a,b) in neighbors:
+                if self.occdata[b][a] in (2,3):
                     return False
             return True
         queue = []
@@ -194,7 +191,7 @@ class AutoNav(Node):
         # get map origin struct has fields of x, y, and z
         map_origin = msg.info.origin.position
         try:
-            trans = self.tfBuffer.lookup_transform('map', 'base_link', rclpy.time.Time(), rclpy.time.Duration(seconds = 0.5))
+            trans = self.tfBuffer.lookup_transform('map', 'base_link', rclpy.time.Time(), rclpy.time.Duration(seconds = 1))
         except (LookupException, ConnectivityException, ExtrapolationException) as e:
             print(e)
             self.get_logger().info('No transformation found')
@@ -341,6 +338,30 @@ class AutoNav(Node):
         # stop the rotation
         self.publisher_.publish(twist)
 
+        # function to rotate the TurtleBot
+    def rotate360(self):
+        # self.get_logger().info('In rotatebot')
+        # create Twist object
+        twist = Twist()
+        
+        
+        # get current yaw angle
+        current_yaw = self.yaw
+        twist.linear.x = 0.0
+        twist.angular.z = 0.5
+        self.publisher_.publish(twist)
+        print("Current yaw is ", current_yaw )
+        time.sleep(2)
+
+        while abs(self.yaw - current_yaw) < 0.1:
+            rclpy.spin_once(self)
+            print("Still rotating 360" , self.yaw , current_yaw)
+            twist.linear.x = 0.0
+            twist.angular.z = 0.3
+            self.publisher_.publish(twist)
+            
+        print("Exited 360 loop")
+
     def pick_direction(self):
         # Set current goal to 0th index of self.path
         self.goal.x = float(self.path[0][0])
@@ -354,10 +375,10 @@ class AutoNav(Node):
         # Get angle to rotate to current goal
         angle_to_goal = atan2(inc_y,inc_x)
 
-        #Change from 2pi to (pi, -pi)
+        # Change from 2pi to (pi, -pi)
         if angle_to_goal > math.pi:
             angle_to_goal = -(angle_to_goal - math.pi)
-        
+
         print("I want go to :", angle_to_goal, "I'm facing", self.yaw)
 
         twist = Twist()
@@ -387,18 +408,13 @@ class AutoNav(Node):
         rclpy.spin_once(self)
 
         
-        if distance((self.x,self.y), (self.goal.x , self.goal.y)) <= 1.5:
-            # Pop current goal because it has been reached
-            print(distance((self.x,self.y), (self.goal.x , self.goal.y)))
-            self.stopbot()
-            print("Path popped : " ,self.path.pop(0))
-            print("path now is : ", self.path)
-        else:
-            # start moving
-            self.get_logger().info('Start moving')
-            twist.linear.x = speedchange
-            twist.angular.z = 0.0
-            self.publisher_.publish(twist) 
+
+    
+        # start moving
+        self.get_logger().info('Start moving')
+        twist.linear.x = speedchange
+        twist.angular.z = 0.0
+        self.publisher_.publish(twist) 
 
 
 
@@ -409,7 +425,6 @@ class AutoNav(Node):
         twist.linear.x = 0.0
         twist.angular.z = 0.0
         self.publisher_.publish(twist)
-
 
     def mover(self):
         global count
@@ -429,9 +444,10 @@ class AutoNav(Node):
                     if not(nearest_frontier): 
                         # If cannot find nearest frontier 5 consecutive tries, map is completed
                         count+=1
-                        if count == 5:
+                        if count == 10:
                             self.get_logger().info('Map is completed')
                             return
+                        rclpy.spin_once(self)
                         continue
 
                     count = 0
@@ -444,30 +460,78 @@ class AutoNav(Node):
                     print("Path is :" ,self.path)
 
                     if self.path:
+                        acc = 0
                         for (x,y) in self.path:
                             # If path is no longer valid, update it
                             if(self.occdata[y][x] == 3): 
                                 self.path = a_star_search(self.occdata,(self.x , self.y), (int(self.nearest_frontier.x) , int(self.nearest_frontier.y)))
+                                if(not(self.path)):
+                                    # start moving
+                                    twist = Twist()
+                                    self.get_logger().info('Start moving')
+                                    self.get_logger().info('GOD DAYM CANT FIND DESTINATION')
+                                    twist.linear.x = 0.03
+                                    twist.angular.z = 0.0
+                                    self.publisher_.publish(twist) 
                                 print("Path is no longer valid")
                                 print("Updating ...")
                                 continue
-                            else:
-                                # If current position is closer to final goal than current goal, update path
-                                if distance((self.x,self.y) , self.path[-1]) - distance( (self.goal.x , self.goal.y), self.path[-1]) < -0.5: 
-                                    self.path = a_star_search(self.occdata,(self.x , self.y), self.path[-1])
-                                    print("Updating path, went off track ...")
-                                else:
-                                    print("Path still valid")
+                            elif self.occdata[y][x] == 1:
+                                acc +=1
+                        # If path doesnt have -1 anymore, update it to find 
+                        if acc == 0:
+                            self.path = a_star_search(self.occdata,(self.x , self.y), (int(self.nearest_frontier.x) , int(self.nearest_frontier.y)))
+                            if(not(self.path)):
+                                # start moving
+                                twist = Twist()
+                                self.get_logger().info('Start moving')
+                                self.get_logger().info('GOD DAYM CANT FIND DESTINATION')
+                                twist.linear.x = 0.03
+                                twist.angular.z = 0.0
+                                self.publisher_.publish(twist)
+                                rclpy.spin_once(self) 
+                                continue
+                        
+                        # If current position is nearer to final goal than 0th index in path to final goal, update path
+                        if distance((self.x , self.y) , (self.path[-1])) - distance( self.path[0] , self.path[-1]) < -1:
+                            self.path = a_star_search(self.occdata,(self.x , self.y), self.path[-1])
+                            if(not(self.path)):
+                                # start moving
+                                twist = Twist()
+                                self.get_logger().info('Start moving')
+                                self.get_logger().info('GOD DAYM CANT FIND DESTINATION')
+                                twist.linear.x = 0.03
+                                twist.angular.z = 0.0
+                                self.publisher_.publish(twist)
+                                rclpy.spin_once(self)
+                                continue 
+                            print("Updating path, went off track ...")
+
+                        # Pop current goal because it has been reached
+                        elif distance((self.x,self.y), (self.goal.x , self.goal.y)) <= 1.5:
+                            
+                            print(distance((self.x,self.y), (self.goal.x , self.goal.y)))
+                            self.stopbot()
+                            print("Path popped : " ,self.path.pop(0))
+                            print("path now is : ", self.path)
+
                         self.pick_direction()
+
                     else:
+                        # Find path if self.path is not there
                         self.path = a_star_search(self.occdata,(self.x , self.y), (int(self.nearest_frontier.x) , int(self.nearest_frontier.y)))
+                        # If path not found to nearest frontier, try moving forward
                         if(not(self.path)):
                             # start moving
                             twist = Twist()
                             self.get_logger().info('Start moving')
+                            self.get_logger().info('GOD DAYM CANT FIND DESTINATION')
                             twist.linear.x = 0.03
                             twist.angular.z = 0.0
                             self.publisher_.publish(twist) 
+                            rclpy.spin_once(self)
+                            continue
+                        self.rotate360()
 
                # allow the callback functions to run
                 rclpy.spin_once(self)

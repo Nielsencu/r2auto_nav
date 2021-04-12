@@ -95,7 +95,7 @@ class Cell():
 def get_neighbors(current):
     i = current[1][0]
     j = current[1][1]
-    return ((i,j+1), (i + 1,j + 1), (i + 1,j), (i+1,j -1 ), (i,j -1) , (i-1,j-1), (i-1,j), (i-1,j + 1))
+    return ((i,j) , (i,j+1), (i + 1,j + 1), (i + 1,j), (i+1,j -1 ), (i,j -1) , (i-1,j-1), (i-1,j), (i-1,j + 1))
 
 def neighbors(i,j):
     return ((i,j),(i,j+1), (i + 1,j + 1), (i + 1,j), (i+1,j -1 ), (i,j -1) , (i-1,j-1), (i-1,j), (i-1,j + 1))
@@ -115,17 +115,17 @@ def insertOpenList(anyList, element):
 def popOpenList(anyList):
     return anyList.pop(0)
 
-def isUnblocked(cell_map,x ,y, row , col):
-    neighbors = [(x,y) , (x,y +1) , (x,y-1) , (x+1 , y) , (x-1 , y)]
+def isUnblocked(cell_map,i ,j, row , col):
+    neighbors = ((i,j) , (i,j+1), (i + 1,j + 1), (i + 1,j), (i+1,j -1 ), (i,j -1) , (i-1,j-1), (i-1,j), (i-1,j + 1))
     for (i,j) in neighbors:
         if cell_map[j][i].occ_value == 3:
             return False
     return True
 
-def isFrontier(cell_map, x ,y):
-    neighbors = [(x,y) , (x,y +1) , (x,y-1) , (x+1 , y) , (x-1 , y)]
-    for (i,j) in neighbors:
-        if cell_map[j][i].occ_value in (2,3):
+def isFrontier(cell_map, i,j):
+    neighbors = ((i,j) , (i,j+1), (i + 1,j + 1), (i + 1,j), (i+1,j -1 ), (i,j -1) , (i-1,j-1), (i-1,j), (i-1,j + 1))
+    for (x,y) in neighbors:
+        if cell_map[y][x].occ_value in (2,3):
             return False
     return True
 
