@@ -44,7 +44,12 @@ def a_star_search(map,start,dest):
             x = neighbor[0]
             y = neighbor[1]
             if(isValid(x,y, len(cell_map), len(cell_map[0])) and isUnblocked(cell_map, x, y, len(cell_map), len(cell_map[0]))):
-                if(reached(neighbor,dest)):
+                if isFrontier(cell_map, x, y):
+                    print("I terminated early coz found frontier")
+                    cell_map[x][y].parent_i = current[1][0]
+                    cell_map[x][y].parent_j = current[1][1]
+                    return tracePath(cell_map, (x,y))
+                elif (reached(neighbor,dest)):
                     #print("At", x, y, "Hey parent is updated,", cell_map[x][y].parent_i, cell_map[x][y].parent_j, " to ", current[1][0], current[1][1])
                     print("Destination cell is found")
                     cell_map[x][y].parent_i = current[1][0]
@@ -92,6 +97,9 @@ def get_neighbors(current):
     j = current[1][1]
     return ((i,j+1), (i + 1,j + 1), (i + 1,j), (i+1,j -1 ), (i,j -1) , (i-1,j-1), (i-1,j), (i-1,j + 1))
 
+def neighbors(i,j):
+    return ((i,j),(i,j+1), (i + 1,j + 1), (i + 1,j), (i+1,j -1 ), (i,j -1) , (i-1,j-1), (i-1,j), (i-1,j + 1))
+
 def reached(current,dest):
     return current[0] == dest[0] and current[1] == dest[1]
 
@@ -108,7 +116,18 @@ def popOpenList(anyList):
     return anyList.pop(0)
 
 def isUnblocked(cell_map,x ,y, row , col):
-    return cell_map[y][x].occ_value in (1,2)
+    neighbors = [(x,y) , (x,y +1) , (x,y-1) , (x+1 , y) , (x-1 , y)]
+    for (i,j) in neighbors:
+        if cell_map[j][i].occ_value == 3:
+            return False
+    return True
+
+def isFrontier(cell_map, x ,y):
+    neighbors = [(x,y) , (x,y +1) , (x,y-1) , (x+1 , y) , (x-1 , y)]
+    for (i,j) in neighbors:
+        if cell_map[j][i].occ_value in (2,3):
+            return False
+    return True
 
 def isValid(x,y, row , col):
     minimum = min(row,col)

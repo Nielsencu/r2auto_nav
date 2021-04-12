@@ -342,19 +342,24 @@ class AutoNav(Node):
         self.publisher_.publish(twist)
 
     def pick_direction(self):
-        global count
-        count +=1
+        # Set current goal to 0th index of self.path
         self.goal.x = float(self.path[0][0])
         self.goal.y = float(self.path[0][1])
+
         print("Goal now is", self.goal.x , self.goal.y)
         print("Now i'm at ", self.x , self.y)
+
         inc_x = self.goal.x - self.x
         inc_y = self.goal.y - self.y
+        # Get angle to rotate to current goal
         angle_to_goal = atan2(inc_y,inc_x)
+
+        #Change from 2pi to (pi, -pi)
         if angle_to_goal > math.pi:
             angle_to_goal = -(angle_to_goal - math.pi)
-
+        
         print("I want go to :", angle_to_goal, "I'm facing", self.yaw)
+
         twist = Twist()
 
         while abs(self.yaw - angle_to_goal) > 0.1:
@@ -362,28 +367,29 @@ class AutoNav(Node):
             
             difference = self.yaw - angle_to_goal
             if difference < 0:
+
                 if(difference < -math.pi):
                     twist.angular.z = -0.2
                 else:
                     twist.linear.x = 0.0
                     twist.angular.z = 0.2
+
             elif difference > 0:
                 if(difference > math.pi):
                     twist.angular.z = 0.2
                 else:
                     twist.linear.x = 0.0
                     twist.angular.z = -0.2
+            
             self.publisher_.publish(twist)
-            # else:
-            #     twist.linear.x = 0.0
-            #     twist.angular.z = -0.3
-            #     time.sleep(1)
-            #     self.publisher_.publish(twist)
-            rclpy.spin_once(self)  
+            rclpy.spin_once(self)
+
         rclpy.spin_once(self)
+
+        
         if distance((self.x,self.y), (self.goal.x , self.goal.y)) <= 1.5:
+            # Pop current goal because it has been reached
             print(distance((self.x,self.y), (self.goal.x , self.goal.y)))
-            print("Goal reached")
             self.stopbot()
             print("Path popped : " ,self.path.pop(0))
             print("path now is : ", self.path)
@@ -408,58 +414,50 @@ class AutoNav(Node):
     def mover(self):
         global count
         try:
-            # initialize variable to write elapsed time to file
-            # contourCheck = 1
             rclpy.spin_once(self)
             current = (self.x,self.y)
-            # self.pick_direction()
 
             while rclpy.ok():
                 current = (self.x,self.y)
-                if self.x == None and self.y == None:
+                if self.x == None or self.y == None:
                     print("Robot's coordinates not detected")
                 else:
+                    print("Finding nearest frontier")
+
                     nearest_frontier = self.find_unoccupied(pos=current)
+
+                    if not(nearest_frontier): 
+                        # If cannot find nearest frontier 5 consecutive tries, map is completed
+                        count+=1
+                        if count == 5:
+                            self.get_logger().info('Map is completed')
+                            return
+                        continue
+
+                    count = 0
                     self.nearest_frontier.x = float(nearest_frontier[0])
                     self.nearest_frontier.y = float(nearest_frontier[1])
-                    if not(nearest_frontier):
-                        self.get_logger().info('Map is completed')
-                        return
+
                     print("Hey my position in mover is,",current)                        
                     print("Nearest frontier is " ,self.nearest_frontier.x , self.nearest_frontier.y)
                     print("My goal is ", self.goal.x , self.goal.y)
                     print("Path is :" ,self.path)
-                    if self.path:
-                        # if(count == 30):
-                        #     self.path = a_star_search(self.occdata, (self.x,self.y), (int(self.nearest_frontier.x) , int(self.nearest_frontier.y)))
-                        #     if(not(self.path)):
-                        #         twist = Twist()
-                        #         self.get_logger().info('Start moving')
-                        #         twist.linear.x = 0.03
-                        #         twist.angular.z = 0.0
-                        #         self.publisher_.publish(twist) 
-                        #     count = 0
-                        # if self.laser_range.size != 0:
-                        #     # check distances in front of TurtleBot and find values less
-                        #     # than stop_distance
-                        #     lri = (self.laser_range[front_angles]<float(stop_distance)).nonzero()
-                        #     # self.get_logger().info('Distances: %s' % str(lri))
 
-                        #     # if the list is not empty
-                        #     if(len(lri[0])>0):
-                        #         # stop moving
-                        #         self.stopbot()
-                        #         print("Too close, moving backwards")
-                        #         print(lri)
-                        #         print("Too close, finding new path")
-                        #         self.path = a_star_search(self.occdata, (self.x,self.y), self.nearest_frontier)
-                        
-                        # if self.x - self.path[0][0] > 0 or self.y - self.path[0][1] > 0:
-                        #     print("Updating path")
-                        #     self.path = a_star_search(self.occdata, current, self.nearest_frontier)
-                        #     if(not(self.path)):
-                        #         self.get_logger().info('Map is completed')
-                        #         return
+                    if self.path:
+                        for (x,y) in self.path:
+                            # If path is no longer valid, update it
+                            if(self.occdata[y][x] == 3): 
+                                self.path = a_star_search(self.occdata,(self.x , self.y), (int(self.nearest_frontier.x) , int(self.nearest_frontier.y)))
+                                print("Path is no longer valid")
+                                print("Updating ...")
+                                continue
+                            else:
+                                # If current position is closer to final goal than current goal, update path
+                                if distance((self.x,self.y) , self.path[-1]) - distance( (self.goal.x , self.goal.y), self.path[-1]) < -0.5: 
+                                    self.path = a_star_search(self.occdata,(self.x , self.y), self.path[-1])
+                                    print("Updating path, went off track ...")
+                                else:
+                                    print("Path still valid")
                         self.pick_direction()
                     else:
                         self.path = a_star_search(self.occdata,(self.x , self.y), (int(self.nearest_frontier.x) , int(self.nearest_frontier.y)))
