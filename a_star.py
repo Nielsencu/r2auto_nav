@@ -23,7 +23,7 @@ class PriorityQueue:
 
 def a_star_search(map,start,dest):
 
-    debugging = False
+    debugging = True
 
     def print_cell_map():
         for i in range(len(cell_map)):
@@ -72,7 +72,7 @@ def a_star_search(map,start,dest):
     while not(open_list.isEmpty()):
         current = open_list.pop()
         origin = current[1]
-        print(origin)
+        #print(origin)
         for neighbor in get_neighbors(origin, len(cell_map) , len(cell_map[0])):
             #print(origin, neighbor, "Hey i passedd this")
             x = neighbor[1]

@@ -137,6 +137,7 @@ class AutoNav(Node):
         self.nearest_frontier = Point()
         self.shooterFlag = False
         self.shooterDirection = 'forward'
+        self.angle_to_goal = -1
  
     def string_callback(self,msg):
         self.get_logger().info('In shooter callback %s' % msg.data)
@@ -249,7 +250,6 @@ class AutoNav(Node):
 
         # set current robot location to 0
         self.occdata[grid_y][grid_x] = 0
-
         # Pop current goal because it has been reached
         if distance((self.x,self.y), (self.goal.x , self.goal.y)) <= 1.5:
 
@@ -267,14 +267,24 @@ class AutoNav(Node):
             print("Path popped : " ,self.path.pop(0))
 
             # If there's no path, but nearest_frontier is not None
-            if not(self.path) and not(self.nearest_frontier.x == None and self.nearest_frontier.y == None):
-                self.path = a_star_search(self.occdata,(self.x , self.y), (int(self.nearest_frontier.x) , int(self.nearest_frontier.y)))
-
-            # Setting new goal
-            self.goal.x = float(self.path[0][1])
-            self.goal.y = float(self.path[0][0])
+            if not(self.path) :
+                if not(self.nearest_frontier.x == -1.0 and self.nearest_frontier.y == -1.0):
+                    self.path = a_star_search(self.occdata,(self.x , self.y), (int(self.nearest_frontier.x) , int(self.nearest_frontier.y)))
 
             print("path now is : ", self.path)
+
+        if not(self.path):
+            self.get_logger().info('Empty path')
+            return
+        
+        # Setting new goal
+        self.goal.x = float(self.path[0][1])
+        self.goal.y = float(self.path[0][0])
+
+        inc_x = self.goal.x - self.x
+        inc_y = self.goal.y - self.y
+        # Get angle to rotate to current goal
+        self.angle_to_goal = (atan2(inc_y,inc_x))
 
         self.get_logger().info("Map size is %i %i " % (len(self.occdata), len(self.occdata[0])))
         self.get_logger().info("Position now is %i %i " % (grid_x,grid_y))
@@ -413,7 +423,7 @@ class AutoNav(Node):
         # get current yaw angle
         current_yaw = self.yaw
         twist.linear.x = 0.0
-        twist.angular.z = 0.5
+        twist.angular.z = 0.3
         time.sleep(1)
         self.publisher_.publish(twist)
         print("Current yaw is ", current_yaw)
@@ -424,7 +434,7 @@ class AutoNav(Node):
             rclpy.spin_once(self)
             print("Still rotating 360" , self.yaw , current_yaw)
             twist.linear.x = 0.0
-            twist.angular.z = 0.5
+            twist.angular.z = 0.3
             self.publisher_.publish(twist)
             
         print("Exited 360 loop")
@@ -432,26 +442,13 @@ class AutoNav(Node):
     def pick_direction(self):
         print("Goal now is", self.goal.x , self.goal.y)
         print("Now i'm at ", self.x , self.y)
-
-        inc_x = self.goal.x - self.x
-        inc_y = self.goal.y - self.y
-        # Get angle to rotate to current goal
-        angle_to_goal = (atan2(inc_y,inc_x))
-        
-        # Please fix angle to goal
-
-        # Change from 2pi to (pi, -pi)
-        # if angle_to_goal > math.pi:
-        #     print("BEfore change , ", angle_to_goal , math.pi - angle_to_goal)
-        #     angle_to_goal = math.pi - angle_to_goal
-
-        print("I want go to :", angle_to_goal, "I'm facing", self.yaw)
+        print("I want go to :", self.angle_to_goal, "I'm facing", self.yaw)
 
         twist = Twist()
 
-        while abs(self.yaw - angle_to_goal) > 0.1:
-            print(" changing direction" , self.yaw , angle_to_goal)
-            difference = self.yaw - angle_to_goal
+        while abs(self.yaw - self.angle_to_goal) > 0.2:
+            print(" changing direction" , self.yaw , self.angle_to_goal)
+            difference = self.yaw - self.angle_to_goal
             print(" difference" , difference)
             if difference < 0:
                 if(difference < -math.pi):
@@ -524,8 +521,8 @@ class AutoNav(Node):
                     nearest_frontier = self.find_unoccupied(pos=current)
 
                     if not(nearest_frontier): 
-                        self.nearest_frontier.x = None
-                        self.nearest_frontier.y = None
+                        self.nearest_frontier.x = -1.0
+                        self.nearest_frontier.y = -1.0
 
                         if not(self.path): 
                             # If cannot find nearest frontier 10 consecutive tries, and don't have old self.path, maps completed
@@ -561,9 +558,9 @@ class AutoNav(Node):
                                 if(not(self.path)):
                                     # start moving
                                     twist = Twist()
-                                    self.get_logger().info('Start moving')
+                                    self.get_logger().info('Stopping')
                                     self.get_logger().info('GOD DAYM CANT FIND DESTINATION')
-                                    twist.linear.x = 0.01
+                                    twist.linear.x = 0.0
                                     twist.angular.z = 0.0
                                     self.publisher_.publish(twist) 
                                 break
@@ -575,9 +572,9 @@ class AutoNav(Node):
                             if(not(self.path)):
                                 # start moving
                                 twist = Twist()
-                                self.get_logger().info('Start moving')
+                                self.get_logger().info('Stopping')
                                 self.get_logger().info('GOD DAYM CANT FIND DESTINATION')
-                                twist.linear.x = 0.01
+                                twist.linear.x = 0.0
                                 twist.angular.z = 0.0
                                 self.publisher_.publish(twist)
 
@@ -586,8 +583,6 @@ class AutoNav(Node):
 
                                 rclpy.spin_once(self) 
                                 continue
-                        
-                        
                         
                         # If current position is nearer to final goal than 0th index in path to final goal, update path
                         if distance((self.x , self.y) , (self.path[-1])) - distance( self.path[0] , self.path[-1]) < -1:
@@ -600,9 +595,9 @@ class AutoNav(Node):
                             if(not(self.path)):
                                 # start moving
                                 twist = Twist()
-                                self.get_logger().info('Start moving')
+                                self.get_logger().info('Stopping')
                                 self.get_logger().info('GOD DAYM CANT FIND DESTINATION')
-                                twist.linear.x = 0.01
+                                twist.linear.x = 0.00
                                 twist.angular.z = 0.0
                                 self.publisher_.publish(twist)
 
@@ -623,9 +618,9 @@ class AutoNav(Node):
                         if(not(self.path)):
                             # start moving
                             twist = Twist()
-                            self.get_logger().info('Start moving')
+                            self.get_logger().info('Stopping')
                             self.get_logger().info('GOD DAYM CANT FIND DESTINATION')
-                            twist.linear.x = 0.01
+                            twist.linear.x = 0.0
                             twist.angular.z = 0.0
                             self.publisher_.publish(twist) 
                             rclpy.spin_once(self)
