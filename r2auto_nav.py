@@ -32,6 +32,7 @@ import scipy.stats
 from .rviz import RvizInterface
 from PIL import Image 
 import matplotlib.pyplot as plt
+from std_msgs.msg import String
 
 # constants
 rotatechange = 0.1
@@ -106,6 +107,20 @@ class AutoNav(Node):
             self.scan_callback,
             qos_profile_sensor_data)
         self.scan_subscription  # prevent unused variable warning
+
+        self.string_subscription = self.create_subscription(
+            String,
+            'shooter',
+            self.string_callback,
+            10)
+
+        # self.get_logger().info('Created subscriber')
+        self.odom_subscription  # prevent unused variable warning
+        # initialize variables
+        self.roll = 0
+        self.pitch = 0
+        self.yaw = 0
+
         self.laser_range = np.array([])
 
         self.tfBuffer = tf2_ros.Buffer()
@@ -120,8 +135,30 @@ class AutoNav(Node):
         self.path = []
         self.goal = Point()
         self.nearest_frontier = Point()
+        self.shooterFlag = False
+        self.shooterDirection = 'forward'
  
-        
+    def string_callback(self,msg):
+        self.get_logger().info('In shooter callback %s' % msg.data)
+        if msg.data == 'Stop moving':
+            self.shooterFlag = True
+            self.get_logger().info('Stopping because target detected')
+        elif msg.data == 'Continue moving':
+            self.shooterFlag = False
+            self.get_logger().info('Resuming auto_nav ...')
+        elif msg.data == 'left':
+            self.shooterDirection = 'left'
+            self.get_logger().info('shuter ask me go left')
+        elif msg.data == 'right':
+            self.shooterDirection = 'right'
+            self.get_logger().info('shoter ask me go right')
+        elif msg.data == 'forward':
+            self.shooterDirection = 'forward'
+            self.get_logger().info('shuter ask me go forward')
+        elif msg.data == 'stop':
+            self.shooterDirection = 'stop'
+            self.get_logger().info('shoter ask me stop')
+    
     def odom_callback(self, msg):
         #self.get_logger().info('In odom_callback')
 
@@ -191,10 +228,11 @@ class AutoNav(Node):
         # get map origin struct has fields of x, y, and z
         map_origin = msg.info.origin.position
         try:
-            trans = self.tfBuffer.lookup_transform('map', 'base_link', rclpy.time.Time(), rclpy.time.Duration(seconds = 1))
+            trans = self.tfBuffer.lookup_transform('map', 'base_link', rclpy.time.Time(), timeout = rclpy.time.Duration())
         except (LookupException, ConnectivityException, ExtrapolationException) as e:
             print(e)
             self.get_logger().info('No transformation found')
+            self.stopbot()
             return
                 
         cur_pos = trans.transform.translation
@@ -211,6 +249,32 @@ class AutoNav(Node):
 
         # set current robot location to 0
         self.occdata[grid_y][grid_x] = 0
+
+        # Pop current goal because it has been reached
+        if distance((self.x,self.y), (self.goal.x , self.goal.y)) <= 1.5:
+
+            self.stopbot()
+            
+            twist = Twist()
+            self.get_logger().info('Start moving after popping')
+            twist.linear.x = 0.05
+            twist.angular.z = 0.0
+            self.publisher_.publish(twist)
+            
+            
+            rclpy.spin_once(self)
+            
+            print("Path popped : " ,self.path.pop(0))
+
+            # If there's no path, but nearest_frontier is not None
+            if not(self.path) and not(self.nearest_frontier.x == None and self.nearest_frontier.y == None):
+                self.path = a_star_search(self.occdata,(self.x , self.y), (int(self.nearest_frontier.x) , int(self.nearest_frontier.y)))
+
+            # Setting new goal
+            self.goal.x = float(self.path[0][1])
+            self.goal.y = float(self.path[0][0])
+
+            print("path now is : ", self.path)
 
         self.get_logger().info("Map size is %i %i " % (len(self.occdata), len(self.occdata[0])))
         self.get_logger().info("Position now is %i %i " % (grid_x,grid_y))
@@ -255,16 +319,18 @@ class AutoNav(Node):
         # create new image
         new_width = iwidth + right + left
         new_height = iheight + top + bottom
-        img_transformed = Image.new(img.mode, (new_width, new_height), map_bg_color)
+        img_transformed = Image.new(img.mode , (new_width, new_height), 1)
         img_transformed.paste(img, (left, top))
+        img_transformed = img_transformed.resize((img_transformed.size[0] * 20 , img_transformed.size[1] * 20))
+        
 
         # rotate by 90 degrees so that the forward direction is at the top of the image
-        rotated = img_transformed.rotate(np.degrees(yaw)-90, expand=True, fillcolor=map_bg_color)
+        #rotated = img_transformed.rotate(np.degrees(yaw)-90, expand=True, fillcolor=map_bg_color)
 
         # show the image using grayscale map
         # plt.imshow(img, cmap='gray', origin='lower')
         # plt.imshow(img_transformed, cmap='gray', origin='lower')
-        plt.imshow(rotated, cmap='gray', origin='lower')
+        plt.imshow(img_transformed, origin='lower')
         plt.draw_all()
         # pause to make sure the plot gets created
         plt.pause(0.00000000001)
@@ -344,40 +410,40 @@ class AutoNav(Node):
         # create Twist object
         twist = Twist()
         
-        
         # get current yaw angle
         current_yaw = self.yaw
         twist.linear.x = 0.0
         twist.angular.z = 0.5
+        time.sleep(1)
         self.publisher_.publish(twist)
-        print("Current yaw is ", current_yaw )
+        print("Current yaw is ", current_yaw)
         time.sleep(2)
+        rclpy.spin_once(self)
 
-        while abs(self.yaw - current_yaw) < 0.1:
+        while abs(self.yaw - current_yaw) > 0.1:
             rclpy.spin_once(self)
             print("Still rotating 360" , self.yaw , current_yaw)
             twist.linear.x = 0.0
-            twist.angular.z = 0.3
+            twist.angular.z = 0.5
             self.publisher_.publish(twist)
             
         print("Exited 360 loop")
 
     def pick_direction(self):
-        # Set current goal to 0th index of self.path
-        self.goal.x = float(self.path[0][0])
-        self.goal.y = float(self.path[0][1])
-
         print("Goal now is", self.goal.x , self.goal.y)
         print("Now i'm at ", self.x , self.y)
 
         inc_x = self.goal.x - self.x
         inc_y = self.goal.y - self.y
         # Get angle to rotate to current goal
-        angle_to_goal = atan2(inc_y,inc_x)
+        angle_to_goal = (atan2(inc_y,inc_x))
+        
+        # Please fix angle to goal
 
         # Change from 2pi to (pi, -pi)
-        if angle_to_goal > math.pi:
-            angle_to_goal = -(angle_to_goal - math.pi)
+        # if angle_to_goal > math.pi:
+        #     print("BEfore change , ", angle_to_goal , math.pi - angle_to_goal)
+        #     angle_to_goal = math.pi - angle_to_goal
 
         print("I want go to :", angle_to_goal, "I'm facing", self.yaw)
 
@@ -385,38 +451,36 @@ class AutoNav(Node):
 
         while abs(self.yaw - angle_to_goal) > 0.1:
             print(" changing direction" , self.yaw , angle_to_goal)
-            
             difference = self.yaw - angle_to_goal
+            print(" difference" , difference)
             if difference < 0:
-
                 if(difference < -math.pi):
-                    twist.angular.z = -0.2
+                    twist.linear.x = 0.0
+                    twist.angular.z = -0.5
                 else:
                     twist.linear.x = 0.0
-                    twist.angular.z = 0.2
+                    twist.angular.z = 0.3
 
             elif difference > 0:
                 if(difference > math.pi):
-                    twist.angular.z = 0.2
-                else:
+                    # Fast turn
                     twist.linear.x = 0.0
-                    twist.angular.z = -0.2
+                    twist.angular.z = 0.5
+                else:
+                    # Gentle turn
+                    twist.linear.x = 0.0
+                    twist.angular.z = -0.3
             
             self.publisher_.publish(twist)
             rclpy.spin_once(self)
 
         rclpy.spin_once(self)
-
-        
-
     
         # start moving
         self.get_logger().info('Start moving')
         twist.linear.x = speedchange
         twist.angular.z = 0.0
         self.publisher_.publish(twist) 
-
-
 
     def stopbot(self):
         self.get_logger().info('In stopbot')
@@ -433,6 +497,24 @@ class AutoNav(Node):
             current = (self.x,self.y)
 
             while rclpy.ok():
+                if self.shooterFlag == True:
+                    twist = Twist()
+                    if self.shooterDirection == 'forward':
+                        twist.linear.x = -0.1
+                        twist.angular.z = 0.0
+                    elif self.shooterDirection == 'left':
+                        twist.linear.x = 0.0
+                        twist.angular.z = -0.2
+                    elif self.shooterDirection == 'right':   
+                        twist.linear.x = 0.0
+                        twist.angular.z = 0.2
+                    elif self.shooterDirection == 'stop':
+                        twist.linear.x = 0.0
+                        twist.angular.z = 0.0
+                    self.publisher_.publish(twist)                     
+                    rclpy.spin_once(self)
+                    continue
+
                 current = (self.x,self.y)
                 if self.x == None or self.y == None:
                     print("Robot's coordinates not detected")
@@ -442,43 +524,52 @@ class AutoNav(Node):
                     nearest_frontier = self.find_unoccupied(pos=current)
 
                     if not(nearest_frontier): 
-                        # If cannot find nearest frontier 5 consecutive tries, map is completed
-                        count+=1
-                        if count == 10:
-                            self.get_logger().info('Map is completed')
-                            return
-                        rclpy.spin_once(self)
-                        continue
+                        self.nearest_frontier.x = None
+                        self.nearest_frontier.y = None
 
-                    count = 0
-                    self.nearest_frontier.x = float(nearest_frontier[0])
-                    self.nearest_frontier.y = float(nearest_frontier[1])
+                        if not(self.path): 
+                            # If cannot find nearest frontier 10 consecutive tries, and don't have old self.path, maps completed
+                            count+=1
+                            if count == 10:
+                                self.get_logger().info('Map is completed')
+                                return
+                            rclpy.spin_once(self)
+                            continue
+                        
+                    else:
+                        self.nearest_frontier.x = float(nearest_frontier[0])
+                        self.nearest_frontier.y = float(nearest_frontier[1])
+                        count = 0
 
                     print("Hey my position in mover is,",current)                        
-                    print("Nearest frontier is " ,self.nearest_frontier.x , self.nearest_frontier.y)
-                    print("My goal is ", self.goal.x , self.goal.y)
+                    print("Nearest frontier is " ,self.nearest_frontier.y , self.nearest_frontier.x)
+                    print("My goal is ", self.goal.y , self.goal.x)
                     print("Path is :" ,self.path)
 
                     if self.path:
+                        self.goal.x = float(self.path[0][1])
+                        self.goal.y = float(self.path[0][0])
                         acc = 0
-                        for (x,y) in self.path:
+                        for (y,x) in self.path:
                             # If path is no longer valid, update it
                             if(self.occdata[y][x] == 3): 
+                                self.get_logger().info("Updating path, because it is blocked ...")
+                                # Rotating 360
+                                self.rotate360()
+
                                 self.path = a_star_search(self.occdata,(self.x , self.y), (int(self.nearest_frontier.x) , int(self.nearest_frontier.y)))
                                 if(not(self.path)):
                                     # start moving
                                     twist = Twist()
                                     self.get_logger().info('Start moving')
                                     self.get_logger().info('GOD DAYM CANT FIND DESTINATION')
-                                    twist.linear.x = 0.03
+                                    twist.linear.x = 0.01
                                     twist.angular.z = 0.0
                                     self.publisher_.publish(twist) 
-                                print("Path is no longer valid")
-                                print("Updating ...")
-                                continue
+                                break
                             elif self.occdata[y][x] == 1:
                                 acc +=1
-                        # If path doesnt have -1 anymore, update it to find 
+                        # If path doesnt have -1 anymore, update it to find new frontier
                         if acc == 0:
                             self.path = a_star_search(self.occdata,(self.x , self.y), (int(self.nearest_frontier.x) , int(self.nearest_frontier.y)))
                             if(not(self.path)):
@@ -486,57 +577,66 @@ class AutoNav(Node):
                                 twist = Twist()
                                 self.get_logger().info('Start moving')
                                 self.get_logger().info('GOD DAYM CANT FIND DESTINATION')
-                                twist.linear.x = 0.03
+                                twist.linear.x = 0.01
                                 twist.angular.z = 0.0
                                 self.publisher_.publish(twist)
+
+                                # Rotating 360
+                                self.rotate360()
+
                                 rclpy.spin_once(self) 
                                 continue
                         
+                        
+                        
                         # If current position is nearer to final goal than 0th index in path to final goal, update path
                         if distance((self.x , self.y) , (self.path[-1])) - distance( self.path[0] , self.path[-1]) < -1:
+                            # Rotate 360
+                            self.rotate360()
+
+                            self.get_logger().info("Updating path, went off track ...")
                             self.path = a_star_search(self.occdata,(self.x , self.y), self.path[-1])
+
                             if(not(self.path)):
                                 # start moving
                                 twist = Twist()
                                 self.get_logger().info('Start moving')
                                 self.get_logger().info('GOD DAYM CANT FIND DESTINATION')
-                                twist.linear.x = 0.03
+                                twist.linear.x = 0.01
                                 twist.angular.z = 0.0
                                 self.publisher_.publish(twist)
+
                                 rclpy.spin_once(self)
                                 continue 
-                            print("Updating path, went off track ...")
 
-                        # Pop current goal because it has been reached
-                        elif distance((self.x,self.y), (self.goal.x , self.goal.y)) <= 1.5:
-                            
-                            print(distance((self.x,self.y), (self.goal.x , self.goal.y)))
-                            self.stopbot()
-                            print("Path popped : " ,self.path.pop(0))
-                            print("path now is : ", self.path)
 
                         self.pick_direction()
 
                     else:
+                        # Rotating 360 everytime finds a new path
+                        self.rotate360()
+
                         # Find path if self.path is not there
                         self.path = a_star_search(self.occdata,(self.x , self.y), (int(self.nearest_frontier.x) , int(self.nearest_frontier.y)))
+                        
                         # If path not found to nearest frontier, try moving forward
                         if(not(self.path)):
                             # start moving
                             twist = Twist()
                             self.get_logger().info('Start moving')
                             self.get_logger().info('GOD DAYM CANT FIND DESTINATION')
-                            twist.linear.x = 0.03
+                            twist.linear.x = 0.01
                             twist.angular.z = 0.0
                             self.publisher_.publish(twist) 
                             rclpy.spin_once(self)
                             continue
-                        self.rotate360()
+                        
 
                # allow the callback functions to run
                 rclpy.spin_once(self)
         except Exception as e:
             print(e)
+            print("Exception")
         # # Ctrl-c detected
         finally:
             # stop moving
