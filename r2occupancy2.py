@@ -83,7 +83,7 @@ class Occupy(Node):
         # find transform to obtain base_link coordinates in the map frame
         # lookup_transform(target_frame, source_frame, time)
         try:
-            trans = self.tfBuffer.lookup_transform('map', 'base_link', rclpy.time.Time())
+            trans = self.tfBuffer.lookup_transform('map', 'base_link', rclpy.time.Time(), timeout = rclpy.time.Duration(seconds = 1))
         except (LookupException, ConnectivityException, ExtrapolationException) as e:
             self.get_logger().info('No transformation found')
             return
@@ -102,7 +102,8 @@ class Occupy(Node):
         # get map grid positions for x, y position
         grid_x = round((cur_pos.x - map_origin.x) / map_res)
         grid_y = round(((cur_pos.y - map_origin.y) / map_res))
-        # self.get_logger().info('Grid Y: %i Grid X: %i' % (grid_y, grid_x))
+        
+        self.get_logger().info('Grid Y: %i Grid X: %i' % (grid_y, grid_x))
 
         # binnum go from 1 to 3 so we can use uint8
         # convert into 2D array using column order
