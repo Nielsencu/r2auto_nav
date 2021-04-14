@@ -160,6 +160,15 @@ class AutoNav(Node):
             self.shooterDirection = 'stop'
             self.get_logger().info('shoter ask me stop')
     
+    def scan_callback(self, msg):
+        # self.get_logger().info('In scan_callback')
+        # create numpy array
+        self.laser_range = np.array(msg.ranges)
+        # print to file
+        np.savetxt(scanfile, self.laser_range)
+        # replace 0's with nan
+        self.laser_range[self.laser_range==0] = np.nan
+    
     def odom_callback(self, msg):
         #self.get_logger().info('In odom_callback')
 
@@ -251,6 +260,10 @@ class AutoNav(Node):
         # set current robot location to 0
         self.occdata[grid_y][grid_x] = 0
         # Pop current goal because it has been reached
+        if self.shooterFlag == True:
+            return
+
+
         if distance((self.x,self.y), (self.goal.x , self.goal.y)) <= 1.5:
 
             self.stopbot()
@@ -431,6 +444,10 @@ class AutoNav(Node):
         rclpy.spin_once(self)
 
         while abs(self.yaw - current_yaw) > 0.1:
+            if self.shooterFlag == True:
+                print(" i exit because detected")
+                break
+            twist = Twist()
             rclpy.spin_once(self)
             print("Still rotating 360" , self.yaw , current_yaw)
             twist.linear.x = 0.0
@@ -497,15 +514,19 @@ class AutoNav(Node):
                 if self.shooterFlag == True:
                     twist = Twist()
                     if self.shooterDirection == 'forward':
+                        self.get_logger().info(" forward in mover")
                         twist.linear.x = -0.1
                         twist.angular.z = 0.0
                     elif self.shooterDirection == 'left':
+                        self.get_logger().info("left in mover")
                         twist.linear.x = 0.0
-                        twist.angular.z = -0.2
+                        twist.angular.z = 0.1
                     elif self.shooterDirection == 'right':   
+                        self.get_logger().info(" right in mover")
                         twist.linear.x = 0.0
-                        twist.angular.z = 0.2
+                        twist.angular.z = -0.1
                     elif self.shooterDirection == 'stop':
+                        self.get_logger().info(" stopping in mover")
                         twist.linear.x = 0.0
                         twist.angular.z = 0.0
                     self.publisher_.publish(twist)                     
@@ -587,7 +608,7 @@ class AutoNav(Node):
                         # If current position is nearer to final goal than 0th index in path to final goal, update path
                         if distance((self.x , self.y) , (self.path[-1])) - distance( self.path[0] , self.path[-1]) < -1:
                             # Rotate 360
-                            self.rotate360()
+                            #self.rotate360()
 
                             self.get_logger().info("Updating path, went off track ...")
                             self.path = a_star_search(self.occdata,(self.x , self.y), self.path[-1])

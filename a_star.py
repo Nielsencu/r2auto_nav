@@ -23,7 +23,7 @@ class PriorityQueue:
 
 def a_star_search(map,start,dest):
 
-    debugging = True
+    debugging = False
 
     def print_cell_map():
         for i in range(len(cell_map)):
