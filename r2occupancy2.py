@@ -8,7 +8,7 @@
 #
 # Unless required by applicable law or agreed to in writing, software
 # distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# WITHOUT WARRANTIES OR CONDITIFONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
@@ -83,7 +83,7 @@ class Occupy(Node):
         # find transform to obtain base_link coordinates in the map frame
         # lookup_transform(target_frame, source_frame, time)
         try:
-            trans = self.tfBuffer.lookup_transform('map', 'base_link', rclpy.time.Time(), timeout = rclpy.time.Duration(seconds = 1))
+            trans = self.tfBuffer.lookup_transform('map', 'base_link', rclpy.time.Time(),rclpy.time.Duration(seconds = 10))
         except (LookupException, ConnectivityException, ExtrapolationException) as e:
             self.get_logger().info('No transformation found')
             return

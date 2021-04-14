@@ -33,6 +33,7 @@ from .rviz import RvizInterface
 from PIL import Image 
 import matplotlib.pyplot as plt
 from std_msgs.msg import String
+import threading
 
 
 # constants
@@ -80,13 +81,13 @@ class AutoNav(Node):
         # self.get_logger().info('Created publisher')
         
         # create subscription to track orientation
-        # self.odom_subscription = self.create_subscription(
-        #     Odometry,
-        #     'odom',
-        #     self.odom_callback,
-        #     10)
-        # # self.get_logger().info('Created subscriber')
-        # self.odom_subscription  # prevent unused variable warning
+        self.odom_subscription = self.create_subscription(
+            Odometry,
+            'odom',
+            self.odom_callback,
+            10)
+        # self.get_logger().info('Created subscriber')
+        self.odom_subscription  # prevent unused variable warning
         # initialize variables
         self.roll = 0
         self.pitch = 0
@@ -219,7 +220,7 @@ class AutoNav(Node):
         map_origin = msg.info.origin.position
     
         try:
-            trans = self.tfBuffer.lookup_transform('map', 'base_link', rclpy.time.Time())
+            trans = self.tfBuffer.lookup_transform('map', 'base_link', rclpy.time.Time(), rclpy.time.Duration())
         except (LookupException, ConnectivityException, ExtrapolationException) as e:
             print(e)
             self.get_logger().info('No transformation found')
@@ -384,23 +385,11 @@ class AutoNav(Node):
         
         # get current yaw angle
         current_yaw = self.yaw
-        twist.linear.x = 0.0
-        twist.angular.z = 0.3
-        self.publisher_.publish(twist)
-        print("Current yaw is ", current_yaw)
 
-        while abs(self.yaw - current_yaw) > 0.1:
-            if self.shooterFlag == True:
-                print(" i exit because detected")
-                break
-            twist = Twist()
-            print("Still rotating 360" , self.yaw , current_yaw)
-            twist.linear.x = 0.0
-            twist.angular.z = 0.3
-            self.publisher_.publish(twist)
-            rclpy.spin_once(self)
-
-            
+    
+        
+        self.rotatebot(360)
+                
         print("Exited 360 loop")
 
     def pick_direction(self):
@@ -409,7 +398,7 @@ class AutoNav(Node):
         # Get angle to rotate to current goal
         self.angle_to_goal = (atan2(inc_y,inc_x))
         print(f' Now at {self.x} , {self.y} , heading to  {self.goal.x} , {self.goal.y} , atan2 of {inc_y} / {inc_x} , which is {self.angle_to_goal}, and now facing {self.yaw} in odometry, but facing {self.cur_rot}' )
-
+        rclpy.spin_once(self)
         twist = Twist()
 
         while abs(self.angle_to_goal - self.cur_rot) > 0.1:
@@ -451,6 +440,7 @@ class AutoNav(Node):
 
     def getPath(self):
         self.path = a_star_search(self.occdata,(self.x , self.y), (int(self.nearest_frontier.y) , int(self.nearest_frontier.x)))
+        rclpy.spin_once(self)
         if(not(self.path)):
             # stop, wait for transformation from tf tree
             twist = Twist()
@@ -462,6 +452,11 @@ class AutoNav(Node):
             # If path is well received
             self.goal.x = float(self.path[0][1])
             self.goal.y = float(self.path[0][0])
+
+            # Rotating 360 everytime finds a new path
+            #self.rotatebot(179)
+            #self.rotatebot(179)
+
             #print("Path now is ", self.path , "goal now is ", self.goal.y , self.goal.x)
 
 
@@ -473,7 +468,7 @@ class AutoNav(Node):
                     return False
             return True
         queue = []
-        queue.append((pos[1],pos[0]))
+        queue.append((pos[0],pos[1]))
         visited = {}
         #condition = True
         while len(queue) > 0:
@@ -518,8 +513,9 @@ class AutoNav(Node):
                     self.publisher_.publish(twist)                     
                     rclpy.spin_once(self)
                     continue
-
+                
                 current = (self.y,self.x)
+                
                 if self.x == -1 or self.y == -1:
                     print("Robot's coordinates not detected")
                 else:
@@ -551,11 +547,11 @@ class AutoNav(Node):
                     print("Path is :" ,self.path)
 
                     if self.path:
+                        rclpy.spin_once(self)
                         acc = 0
                         for (y,x) in self.path:
                             # If path is no longer valid, update it
                             if(self.occdata[y][x] == 3): 
-                                #self.rotate360()
                                 self.get_logger().info("Updating path, because it is blocked ...")
                                 self.getPath()
                                 break
@@ -563,18 +559,17 @@ class AutoNav(Node):
                                 acc +=1
                         # If path doesnt have -1 anymore, update it to find new frontier
                         if acc == 0:
-                            #self.rotate360()
                             self.get_logger().info("Updating path, because no longer unmapped")
                             self.getPath()
-                            continue
+                            
 
+                        rclpy.spin_once(self)
                         # If current position is nearer to final goal than 0th index in path to final goal, update path
                         if distance((self.x , self.y) , (self.path[-1])) - distance(self.path[0] , self.path[-1]) < -1:
-                            # Rotate 360
-                            #self.rotate360()
                             self.get_logger().info("Updating path, because found a closer path")
                             self.getPath()
 
+                        rclpy.spin_once(self)
                         if distance((self.x,self.y), (self.goal.x , self.goal.y)) <= 1.5:
                             print(f' Now at {self.x} , {self.y} , goal now {self.goal.x}, {self.goal.y}, distance is {distance((self.x,self.y), (self.goal.x , self.goal.y))}')
                             self.stopbot()
@@ -599,8 +594,6 @@ class AutoNav(Node):
                         self.pick_direction()
 
                     else:
-                        # Rotating 360 everytime finds a new path
-                        #self.rotate360()
                         # Find path if self.path is not there
                         self.getPath()
                 
@@ -614,12 +607,21 @@ class AutoNav(Node):
             # stop moving
             self.stopbot()
                 
+def thread_function(name):
+    logging.info("Thread %s: starting", name)
+    time.sleep(2)
+    logging.info("Thread %s: finishing", name)
+
 
 def main(args=None):
     rclpy.init(args=args)
 
     auto_nav = AutoNav()
+    # x = threading.Thread(target=thread_function, args=("heyh"), daemon=True)
+    # x.start()
+    
     auto_nav.mover()
+
 
     # create matplotlib figure
     # plt.ion()
