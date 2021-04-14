@@ -33,6 +33,7 @@ from .rviz import RvizInterface
 from PIL import Image 
 import matplotlib.pyplot as plt
 from std_msgs.msg import String
+import queue
 
 # constants
 rotatechange = 0.1
@@ -176,23 +177,23 @@ class AutoNav(Node):
                 if self.occdata[b][a] in (2,3):
                     return False
             return True
-        queue = []
-        queue.append((pos[0],pos[1]))
-        visited = []
+        queue = queue.Queue()
+        queue.put((pos[0],pos[1]))
+        visited = {}
         #condition = True
         while len(queue) > 0:
-            current_pos = queue.pop(0)
+            current_pos = queue.get()
             x = current_pos[0]
             y = current_pos[1]
-            visited.append(current_pos)
+            visited[current_pos] = 1
             if self.occdata[y][x] == 3: # Flag this as an obstacle, no need to check if its an frontier
                 continue
             elif is_frontier(x,y):
                 return (x,y)
             neighbors = ((x,y+1) , (x,y-1) , (x+1,y) , (x-1,y))
             for neighbor in neighbors:
-                if neighbor not in queue and neighbor not in visited:
-                    queue.append(neighbor)
+                if neighbor not in queue and visited.get(neighbor) == None:
+                    queue.put(neighbor)
         return None
 
     def occ_callback(self, msg):
