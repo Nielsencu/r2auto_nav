@@ -495,6 +495,9 @@ class AutoNav(Node):
             current = (self.x,self.y)
 
             while rclpy.ok():
+                # allow the callback functions to run
+                rclpy.spin_once(self)
+                
                 if self.shooterFlag == True:
                     twist = Twist()
                     if self.shooterDirection == 'forward':
@@ -626,10 +629,8 @@ class AutoNav(Node):
                             self.publisher_.publish(twist) 
                             rclpy.spin_once(self)
                             continue
-                        
 
-               # allow the callback functions to run
-                rclpy.spin_once(self)
+
         except Exception as e:
             print(e)
             print("Exception")
