@@ -33,7 +33,7 @@ from .rviz import RvizInterface
 from PIL import Image 
 import matplotlib.pyplot as plt
 from std_msgs.msg import String
-import queue
+
 
 # constants
 rotatechange = 0.1
@@ -177,12 +177,12 @@ class AutoNav(Node):
                 if self.occdata[b][a] in (2,3):
                     return False
             return True
-        queue = queue.Queue()
-        queue.put((pos[0],pos[1]))
+        queue = []
+        queue.append((pos[0],pos[1]))
         visited = {}
         #condition = True
         while len(queue) > 0:
-            current_pos = queue.get()
+            current_pos = queue.pop(0)
             x = current_pos[0]
             y = current_pos[1]
             visited[current_pos] = 1
@@ -193,7 +193,7 @@ class AutoNav(Node):
             neighbors = ((x,y+1) , (x,y-1) , (x+1,y) , (x-1,y))
             for neighbor in neighbors:
                 if neighbor not in queue and visited.get(neighbor) == None:
-                    queue.put(neighbor)
+                    queue.append(neighbor)
         return None
 
     def occ_callback(self, msg):
