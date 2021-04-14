@@ -165,10 +165,7 @@ class AutoNav(Node):
         #self.get_logger().info('In odom_callback')
 
         orientation_quat =  msg.pose.pose.orientation
-        self.roll, self.pitch, self.yaw = euler_from_quaternion(orientation_quat.x, orientation_quat.y, orientation_quat.z, orientation_quat.w)
-
-    def get_path(self,current,destination):
-        pass        
+        self.roll, self.pitch, self.yaw = euler_from_quaternion(orientation_quat.x, orientation_quat.y, orientation_quat.z, orientation_quat.w)      
     
     def find_unoccupied(self,pos):
         def is_frontier(i,j):
@@ -488,6 +485,21 @@ class AutoNav(Node):
         twist.angular.z = 0.0
         self.publisher_.publish(twist)
 
+    def getPath(self):
+        self.path = a_star_search(self.occdata,(self.x , self.y), (int(self.nearest_frontier.x) , int(self.nearest_frontier.y)))
+        if(not(self.path)):
+            # stop, wait for transformation from tf tree
+            twist = Twist()
+            self.get_logger().info('GOD DAYM CANT FIND DESTINATION')
+            twist.linear.x = 0.0
+            twist.angular.z = 0.0
+            self.publisher_.publish(twist)
+
+        # Rotating 360
+        self.rotate360()
+
+        rclpy.spin_once(self) 
+
     def mover(self):
         global count
         try:
@@ -497,7 +509,7 @@ class AutoNav(Node):
             while rclpy.ok():
                 # allow the callback functions to run
                 rclpy.spin_once(self)
-                
+
                 if self.shooterFlag == True:
                     twist = Twist()
                     if self.shooterDirection == 'forward':
@@ -554,60 +566,25 @@ class AutoNav(Node):
                         for (y,x) in self.path:
                             # If path is no longer valid, update it
                             if(self.occdata[y][x] == 3): 
-                                self.get_logger().info("Updating path, because it is blocked ...")
-                                # Rotating 360
                                 self.rotate360()
-
-                                self.path = a_star_search(self.occdata,(self.x , self.y), (int(self.nearest_frontier.x) , int(self.nearest_frontier.y)))
-                                if(not(self.path)):
-                                    # start moving
-                                    twist = Twist()
-                                    self.get_logger().info('Stopping')
-                                    self.get_logger().info('GOD DAYM CANT FIND DESTINATION')
-                                    twist.linear.x = 0.0
-                                    twist.angular.z = 0.0
-                                    self.publisher_.publish(twist) 
+                                self.get_logger().info("Updating path, because it is blocked ...")
+                                self.getPath()
                                 break
                             elif self.occdata[y][x] == 1:
                                 acc +=1
                         # If path doesnt have -1 anymore, update it to find new frontier
                         if acc == 0:
-                            self.path = a_star_search(self.occdata,(self.x , self.y), (int(self.nearest_frontier.x) , int(self.nearest_frontier.y)))
-                            if(not(self.path)):
-                                # start moving
-                                twist = Twist()
-                                self.get_logger().info('Stopping')
-                                self.get_logger().info('GOD DAYM CANT FIND DESTINATION')
-                                twist.linear.x = 0.0
-                                twist.angular.z = 0.0
-                                self.publisher_.publish(twist)
-
-                                # Rotating 360
-                                self.rotate360()
-
-                                rclpy.spin_once(self) 
-                                continue
+                            self.rotate360()
+                            self.get_logger().info("Updating path, because no longer unmapped")
+                            self.getPath()
+                            continue
                         
                         # If current position is nearer to final goal than 0th index in path to final goal, update path
-                        if distance((self.x , self.y) , (self.path[-1])) - distance( self.path[0] , self.path[-1]) < -1:
+                        if distance((self.x , self.y) , (self.path[-1])) - distance(self.path[0] , self.path[-1]) < -1:
                             # Rotate 360
                             self.rotate360()
-
-                            self.get_logger().info("Updating path, went off track ...")
-                            self.path = a_star_search(self.occdata,(self.x , self.y), self.path[-1])
-
-                            if(not(self.path)):
-                                # start moving
-                                twist = Twist()
-                                self.get_logger().info('Stopping')
-                                self.get_logger().info('GOD DAYM CANT FIND DESTINATION')
-                                twist.linear.x = 0.00
-                                twist.angular.z = 0.0
-                                self.publisher_.publish(twist)
-
-                                rclpy.spin_once(self)
-                                continue 
-
+                            self.get_logger().info("Updating path, because found a closer path")
+                            self.getPath()
 
                         self.pick_direction()
 
@@ -616,19 +593,7 @@ class AutoNav(Node):
                         self.rotate360()
 
                         # Find path if self.path is not there
-                        self.path = a_star_search(self.occdata,(self.x , self.y), (int(self.nearest_frontier.x) , int(self.nearest_frontier.y)))
-                        
-                        # If path not found to nearest frontier, try moving forward
-                        if(not(self.path)):
-                            # start moving
-                            twist = Twist()
-                            self.get_logger().info('Stopping')
-                            self.get_logger().info('GOD DAYM CANT FIND DESTINATION')
-                            twist.linear.x = 0.0
-                            twist.angular.z = 0.0
-                            self.publisher_.publish(twist) 
-                            rclpy.spin_once(self)
-                            continue
+                        self.getPath()
 
 
         except Exception as e:
