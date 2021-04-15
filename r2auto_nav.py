@@ -39,7 +39,7 @@ import threading
 # constants
 rotatechange = 0.1
 speedchange = 0.05
-occ_bins = [-1, 0, 50, 100]
+occ_bins = [-1, 0, 60, 100]
 stop_distance = 0.25
 front_angle = 30
 front_angles = range(-front_angle,front_angle+1,1)
@@ -241,60 +241,67 @@ class AutoNav(Node):
         self.x = grid_x
         self.y = grid_y
 
-        
         # set current robot location to 0
         self.occdata[grid_y][grid_x] = 0
-
-        if not(self.path):
-            self.get_logger().info('Empty path')
-            return
 
         self.get_logger().info("Map size is %i %i " % (len(self.occdata), len(self.occdata[0])))
         self.get_logger().info("Position now is %i %i " % (grid_x,grid_y))
 
+        # transposed = self.occdata.
+        # transposed = transposed.transpose()
+        # transposed = np.rot90(transposed, 1)
+
         if(self.occdata.any()):
             visualization = RvizInterface(self.occdata, msg)
 
-        if self.path:
+        if not(self.path):
+            self.get_logger().info('Empty path')
+            return
+        else:
+            # for (i,j) in self.path:
+            #     transposed[len(transposed) - j][i] = 0
             self.get_logger().info("Hey path is published")
             visualization.publishPath(self.path)
+        
+        # np.savetxt(mapfile, transposed, fmt='%d', delimiter='')
+        np.savetxt('occ.txt', self.occdata, fmt='%d', delimiter='')
+        
+        # # create image from 2D array using PIL
+        # img = Image.fromarray(self.occdata)
+        # # find center of image
+        # i_centerx = iwidth/2
+        # i_centery = iheight/2
+        # # find how much to shift the image to move grid_x and grid_y to center of image
+        # shift_x = round(grid_x - i_centerx)
+        # shift_y = round(grid_y - i_centery)
+        # # self.get_logger().info('Shift Y: %i Shift X: %i' % (shift_y, shift_x))
 
-        # create image from 2D array using PIL
-        img = Image.fromarray(self.occdata)
-        # find center of image
-        i_centerx = iwidth/2
-        i_centery = iheight/2
-        # find how much to shift the image to move grid_x and grid_y to center of image
-        shift_x = round(grid_x - i_centerx)
-        shift_y = round(grid_y - i_centery)
-        # self.get_logger().info('Shift Y: %i Shift X: %i' % (shift_y, shift_x))
-
-        # pad image to move robot position to the center
-        # adapted from https://note.nkmk.me/en/python-pillow-add-margin-expand-canvas/ 
-        left = 0
-        right = 0
-        top = 0
-        bottom = 0
-        if shift_x > 0:
-            # pad right margin
-            right = 2 * shift_x
-        else:
-            # pad left margin
-            left = 2 * (-shift_x)
+        # # pad image to move robot position to the center
+        # # adapted from https://note.nkmk.me/en/python-pillow-add-margin-expand-canvas/ 
+        # left = 0
+        # right = 0
+        # top = 0
+        # bottom = 0
+        # if shift_x > 0:
+        #     # pad right margin
+        #     right = 2 * shift_x
+        # else:
+        #     # pad left margin
+        #     left = 2 * (-shift_x)
             
-        if shift_y > 0:
-            # pad bottom margin
-            bottom = 2 * shift_y
-        else:
-            # pad top margin
-            top = 2 * (-shift_y)
+        # if shift_y > 0:
+        #     # pad bottom margin
+        #     bottom = 2 * shift_y
+        # else:
+        #     # pad top margin
+        #     top = 2 * (-shift_y)
             
-        # create new image
-        new_width = iwidth + right + left
-        new_height = iheight + top + bottom
-        img_transformed = Image.new(img.mode , (new_width, new_height), 1)
-        img_transformed.paste(img, (left, top))
-        img_transformed = img_transformed.resize((img_transformed.size[0] * 20 , img_transformed.size[1] * 20))
+        # # create new image
+        # new_width = iwidth + right + left
+        # new_height = iheight + top + bottom
+        # img_transformed = Image.new(img.mode , (new_width, new_height), 1)
+        # img_transformed.paste(img, (left, top))
+        # img_transformed = img_transformed.resize((img_transformed.size[0] * 20 , img_transformed.size[1] * 20))
         
 
         # rotate by 90 degrees so that the forward direction is at the top of the image
@@ -303,23 +310,12 @@ class AutoNav(Node):
         # show the image using grayscale map
         # plt.imshow(img, cmap='gray', origin='lower')
         # plt.imshow(img_transformed, cmap='gray', origin='lower')
-        plt.imshow(img_transformed, origin='lower')
-        plt.draw_all()
-        # pause to make sure the plot gets created
-        plt.pause(0.00000000001)
+        # plt.imshow(img_transformed, origin='lower')
+        # plt.draw_all()
+        # # pause to make sure the plot gets created
+        # plt.pause(0.00000000001)
 
         # print to file
-        np.savetxt(mapfile, self.occdata, fmt='%d', delimiter='')
-
-
-    def scan_callback(self, msg):
-        # self.get_logger().info('In scan_callback')
-        # create numpy array
-        self.laser_range = np.array(msg.ranges)
-        # print to file
-        np.savetxt(scanfile, self.laser_range)
-        # replace 0's with nan
-        self.laser_range[self.laser_range==0] = np.nan
 
 
     # function to rotate the TurtleBot
@@ -386,8 +382,6 @@ class AutoNav(Node):
         # get current yaw angle
         current_yaw = self.yaw
 
-    
-        
         self.rotatebot(360)
                 
         print("Exited 360 loop")
@@ -397,19 +391,21 @@ class AutoNav(Node):
         inc_y = self.goal.y - self.y
         # Get angle to rotate to current goal
         self.angle_to_goal = (atan2(inc_y,inc_x))
-        print(f' Now at {self.x} , {self.y} , heading to  {self.goal.x} , {self.goal.y} , atan2 of {inc_y} / {inc_x} , which is {self.angle_to_goal}, and now facing {self.yaw} in odometry, but facing {self.cur_rot}' )
-        rclpy.spin_once(self)
+        print(f' Now at {self.x} , {self.y} , heading to  {self.goal.x} , {self.goal.y} , atan2 of {inc_y} / {inc_x} , which is {self.angle_to_goal}, but facing {self.cur_rot}' )
         twist = Twist()
 
         while abs(self.angle_to_goal - self.cur_rot) > 0.1:
+            if self.shooterFlag == True:
+                break
             difference = self.cur_rot - self.angle_to_goal
+            print("changing direction" , abs(difference))
             if difference < 0:
                 if(difference < -math.pi):
                     twist.linear.x = 0.0
                     twist.angular.z = -0.5
                 else:
                     twist.linear.x = 0.0
-                    twist.angular.z = 0.3
+                    twist.angular.z = 0.2
 
             elif difference > 0:
                 if(difference > math.pi):
@@ -419,7 +415,7 @@ class AutoNav(Node):
                 else:
                     # Gentle turn
                     twist.linear.x = 0.0
-                    twist.angular.z = -0.3
+                    twist.angular.z = -0.2
             
             self.publisher_.publish(twist)
             rclpy.spin_once(self)
@@ -439,8 +435,8 @@ class AutoNav(Node):
         self.publisher_.publish(twist)
 
     def getPath(self):
-        self.path = a_star_search(self.occdata,(self.x , self.y), (int(self.nearest_frontier.y) , int(self.nearest_frontier.x)))
-        rclpy.spin_once(self)
+        
+        self.path = a_star_search(self.occdata,(self.x , self.y), (int(self.nearest_frontier.x) , int(self.nearest_frontier.y)))
         if(not(self.path)):
             # stop, wait for transformation from tf tree
             twist = Twist()
@@ -450,12 +446,8 @@ class AutoNav(Node):
             self.publisher_.publish(twist)
         else:
             # If path is well received
-            self.goal.x = float(self.path[0][1])
-            self.goal.y = float(self.path[0][0])
-
-            # Rotating 360 everytime finds a new path
-            #self.rotatebot(179)
-            #self.rotatebot(179)
+            self.goal.x = float(self.path[0][0])
+            self.goal.y = float(self.path[0][1])
 
             #print("Path now is ", self.path , "goal now is ", self.goal.y , self.goal.x)
 
@@ -464,32 +456,72 @@ class AutoNav(Node):
         def is_frontier(i,j):
             neighbors = ((i,j) , (i,j+1), (i + 1,j + 1), (i + 1,j), (i+1,j -1 ), (i,j -1) , (i-1,j-1), (i-1,j), (i-1,j + 1))
             for (a,b) in neighbors:
-                if self.occdata[a][b] in (2,3):
+                if self.occdata[b][a] in (2,3):
                     return False
             return True
+
+        def is_small_frontier(i,j):
+            neighbors = ((i,j) , (i-1 , j) , (i+1 , j) , (i, j-1) , (i, j+1) )
+            diagonals = ((i-1,j-1) , (i + 1 , j - 1) , (i-1 , j+1) , (i+1 , j+1))
+            for (a,b) in neighbors:
+                #print(a,b , self.occdata[b][a])
+                if self.occdata[b][a] in (2,3):
+                    return False
+            for (a,b) in diagonals:
+                #print(a,b , self.occdata[b][a])
+                if self.occdata[b][a] == 3:
+                    return False
+            return True
+
         queue = []
         queue.append((pos[0],pos[1]))
         visited = {}
         #condition = True
         while len(queue) > 0:
             current_pos = queue.pop(0)
-            x = current_pos[1]
-            y = current_pos[0]
+            x = current_pos[0]
+            y = current_pos[1]
             visited[current_pos] = 1
+            #print(f' is small frontier ? {is_small_frontier(x, y)} , is frontier ? {is_frontier(x, y)}')
             if self.occdata[y][x] == 3: # Flag this as an obstacle, no need to check if its an frontier
                 continue
-            elif is_frontier(y,x):
-                return (y,x)
-            neighbors = ((y,x+1) , (y,x-1) , (y+1,x) , (y-1,x))
+            elif is_frontier(x,y) or is_small_frontier(x, y):
+                return (x,y)
+            neighbors = ((x,y+1) , (x,y-1) , (x+1,y) , (x-1,y))
             for neighbor in neighbors:
                 if neighbor not in queue and visited.get(neighbor) == None:
                     queue.append(neighbor)
         return None
+
+    def pop_path(self):
+        if distance((self.x,self.y), (self.goal.x , self.goal.y)) <= 1.5:
+            print(f' Now at {self.x} , {self.y} , goal now {self.goal.x}, {self.goal.y}, distance is {distance((self.x,self.y), (self.goal.x , self.goal.y))}')
+            self.stopbot()
+            
+            twist = Twist()
+            self.get_logger().info('Start moving after popping')
+            twist.linear.x = 0.05
+            twist.angular.z = 0.0
+            self.publisher_.publish(twist)
+            
+            print("Path popped : " ,self.path.pop(0))
+
+            # If there's no path, but nearest_frontier is not None
+            if not(self.path) :
+                if not(self.nearest_frontier.x == -1.0 and self.nearest_frontier.y == -1.0):
+                    self.getPath()
+                else:
+                    return
+
+            print("path now is : ", self.path)
+            self.goal.x = float(self.path[0][0])
+            self.goal.y = float(self.path[0][1])
+
     def mover(self):
         global count
         try:
             rclpy.spin_once(self)
-            current = (self.y,self.x)
+            current = (self.x,self.y)
 
             while rclpy.ok():
                 if self.shooterFlag == True:
@@ -514,7 +546,7 @@ class AutoNav(Node):
                     rclpy.spin_once(self)
                     continue
                 
-                current = (self.y,self.x)
+                current = (self.x,self.y)
                 
                 if self.x == -1 or self.y == -1:
                     print("Robot's coordinates not detected")
@@ -535,24 +567,30 @@ class AutoNav(Node):
                                 return
                             rclpy.spin_once(self)
                             continue
+                        else:
+                            self.pop_path()
+                            self.pick_direction()
+                            rclpy.spin_once(self)
+                            continue
+
                         
                     else:
-                        self.nearest_frontier.x = float(nearest_frontier[1])
-                        self.nearest_frontier.y = float(nearest_frontier[0])
+                        self.nearest_frontier.x = float(nearest_frontier[0])
+                        self.nearest_frontier.y = float(nearest_frontier[1])
                         count = 0
 
                     print("Hey my position in mover is,",current)                        
-                    print("Nearest frontier is " ,self.nearest_frontier.y , self.nearest_frontier.x)
-                    print("My goal is ", self.goal.y , self.goal.x)
+                    print("Nearest frontier is " ,self.nearest_frontier.x , self.nearest_frontier.y)
+                    print("My goal is ", self.goal.x , self.goal.y)
                     print("Path is :" ,self.path)
 
                     if self.path:
-                        rclpy.spin_once(self)
                         acc = 0
-                        for (y,x) in self.path:
+                        for (x,y) in self.path:
                             # If path is no longer valid, update it
                             if(self.occdata[y][x] == 3): 
                                 self.get_logger().info("Updating path, because it is blocked ...")
+                                self.stopbot()
                                 self.getPath()
                                 break
                             elif self.occdata[y][x] == 1:
@@ -560,40 +598,22 @@ class AutoNav(Node):
                         # If path doesnt have -1 anymore, update it to find new frontier
                         if acc == 0:
                             self.get_logger().info("Updating path, because no longer unmapped")
+                            self.stopbot()
                             self.getPath()
-                            
 
-                        rclpy.spin_once(self)
                         # If current position is nearer to final goal than 0th index in path to final goal, update path
                         if distance((self.x , self.y) , (self.path[-1])) - distance(self.path[0] , self.path[-1]) < -1:
                             self.get_logger().info("Updating path, because found a closer path")
+                            self.stopbot()
                             self.getPath()
 
-                        rclpy.spin_once(self)
-                        if distance((self.x,self.y), (self.goal.x , self.goal.y)) <= 1.5:
-                            print(f' Now at {self.x} , {self.y} , goal now {self.goal.x}, {self.goal.y}, distance is {distance((self.x,self.y), (self.goal.x , self.goal.y))}')
-                            self.stopbot()
-                            
-                            twist = Twist()
-                            self.get_logger().info('Start moving after popping')
-                            twist.linear.x = 0.05
-                            twist.angular.z = 0.0
-                            self.publisher_.publish(twist)
-                            
-                            print("Path popped : " ,self.path.pop(0))
-
-                            # If there's no path, but nearest_frontier is not None
-                            if not(self.path) :
-                                if not(self.nearest_frontier.x == -1.0 and self.nearest_frontier.y == -1.0):
-                                    self.getPath()
-
-                            print("path now is : ", self.path)
-                            self.goal.x = float(self.path[0][1])
-                            self.goal.y = float(self.path[0][0])
+                        self.pop_path()
 
                         self.pick_direction()
 
                     else:
+                        #self.rotatebot(179)
+                        #self.rotatebot(179)
                         # Find path if self.path is not there
                         self.getPath()
                 
@@ -606,11 +626,7 @@ class AutoNav(Node):
         finally:
             # stop moving
             self.stopbot()
-                
-def thread_function(name):
-    logging.info("Thread %s: starting", name)
-    time.sleep(2)
-    logging.info("Thread %s: finishing", name)
+
 
 
 def main(args=None):

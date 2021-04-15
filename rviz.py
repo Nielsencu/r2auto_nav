@@ -29,8 +29,8 @@ class RvizInterface(Node):
         self.path.poses[:] = []
         for i in range(len(path)):
             p = PoseStamped()
-            p.pose.position.x = (path[i][1] * self.map.info.resolution) + self.map.info.origin.position.x
-            p.pose.position.y = (path[i][0] * self.map.info.resolution) + self.map.info.origin.position.y
+            p.pose.position.x = (path[i][0] * self.map.info.resolution) + self.map.info.origin.position.x
+            p.pose.position.y = (path[i][1] * self.map.info.resolution) + self.map.info.origin.position.y
             p.pose.position.z = 0.0
             self.path.poses.append(p)
         self.pub_path.publish(self.path)
