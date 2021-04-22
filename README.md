@@ -33,7 +33,7 @@ For navigation, Breadth First search is used to find unmapped areas. Breadth fir
 Unmapped area is a 3x3 subarray, as shown below.
 
 <p align="center">
-	<img src="doc/unmapped.png" width="750"/>
+	<img src="doc/unmapped.png" width="300"/>
 	<p>Yellow tiles can be either of value 1 or 2 , 3 means that it is unreachable</p>
 </p>
 
