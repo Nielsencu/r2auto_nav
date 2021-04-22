@@ -60,7 +60,7 @@ If the first threshold temperature is inside the 8x8 array returned by IR camera
 ## Future Improvements
 * Global Path Smoothing
 * Uses control signal to follow the global path
-* Implements obstacle avoidance (Local Planner)
+* Implement obstacle avoidance (Local Planner)
 	
 	
 
