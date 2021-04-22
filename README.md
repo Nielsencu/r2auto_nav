@@ -18,7 +18,7 @@ The full set-up from scratch is provided in the wiki. We assume that you already
 Software flow for mapping and firing.
 
 <p align="center">
-	<img src="doc/soft_flow.png" width="600"/>
+	<img src="doc/soft_flow.png" width="900"/>
 </p>
 
 # Navigation
