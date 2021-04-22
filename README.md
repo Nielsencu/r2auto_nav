@@ -46,6 +46,11 @@ Mapping is completed when there is no more unblocked and unmapped area.
 
 For visualization purposes, if path is found, it is published to /global_plan topic. One can use Rviz to visualize the path like below.
 
+<p align="center">
+	<img src="doc/pathonlyu.png" width="600"/>
+	<p>Yellow tiles can be either of value 1 or 2 , 3 means that it is unreachable</p>
+</p>
+
 # Identify, Aim, Fire
 
 
