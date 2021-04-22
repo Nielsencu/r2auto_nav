@@ -30,11 +30,28 @@ Map file is also saved under 'map.txt'.
 
 For navigation, Breadth First search is used to find unmapped areas. Breadth first search starts from robot's current position.
 
+Unmapped area is a 3x3 subarray, as shown below.
+
+<p align="center">
+	<img src="doc/unmapped.png" width="750"/>
+	<p>Yellow tiles can be either of value 1 or 2 , 3 means that it is unreachable</p>
+</p>
+
+
 Once an unmapped area has been found, A* Search is used to find path between robot's current position and the unmapped area.
 
-Turtlebot follows the global path by updating its' path on the fly. It always attempts to go to 1st item in the path, and pops the item if it has reached the coordinate. It is like a pacman following a line.
+Turtlebot follows the global path by updating its' path on the fly. It always attempts to go to 1st item in the path, and pops the item if it has reached the coordinate. This will keep continuing until the path is empty. It is like a pacman following a line. If the current path is blocked, it will find another nearest unmapped area and update the current path to a new path to this new unmapped area. If the end goal is no longer unmapped, it will find a new nearest unmapped area and update the current path again.
 
-For visualization purposes, if path is found, it is published to /global_plan topic. One can use Rviz to visualize the path.
+Mapping is completed when there is no more unblocked and unmapped area.
+
+For visualization purposes, if path is found, it is published to /global_plan topic. One can use Rviz to visualize the path like below.
+
+# Identify, Aim, Fire
+
+
+# Navigation and Shooting Integration
+If the first threshold temperature is inside the 8x8 array returned by IR camera, RPi will publish a message to r2auto_nav that the target is detected and navigation will be stopped immediately. Following that, RPi will keep publishing messages to r2auto_nav either move forward, left or right until the second threshold temperature is in the middle of the 8x8 array. Once the second threshold is in the middle, it will stop moving and trigger the shooting mechanism. Once it has shot, it will publish one last message to resume navigation and the script will be terminated. Navigation is then resumed as per usual.
+
 
 ## Future Improvements
 * Global Path Smoothing
