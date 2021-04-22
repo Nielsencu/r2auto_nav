@@ -227,9 +227,22 @@ nano ~/.ssh/authorized_keys
 ## Setting up of RPis for Turtlebot
 
 # Overview
+Software flow for mapping and firing.
 
+<p align="center">
+	<img src="doc/soft_flow.png" width="750"/>
+</p>
 
 # Navigation
+For the occupancy grid data, -1 value is mapped to 1, and occupancy grid values ranging from 0 to 60 are mapped to 2 and 60 to 100 are mapped to 3.
+
+In this case, 1 is unmapped, 2 is free space, and 3 is blocked.
+
+For navigation, Breadth First search is used to find unmapped areas. Breadth first search starts from robot's current position.
+
+Once an unmapped area has been found, A* Search is used to find path between robot's current position and the unmapped area.
+
+For visualization purposes, if path is found, it is published to /global_plan topic. One can use Rviz to visualize the path.
 
 
 
