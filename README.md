@@ -545,15 +545,26 @@ Software flow for mapping and firing.
 </p>
 
 # Navigation
-For the occupancy grid data, -1 value is mapped to 1, and occupancy grid values ranging from 0 to 60 are mapped to 2 and 60 to 100 are mapped to 3.
+For occupancy grid data, -1 value is mapped to 1, and occupancy grid values ranging from 0 to 60 are mapped to 2 and 60 to 100 are mapped to 3.
 
 In this case, 1 is unmapped, 2 is free space, and 3 is blocked.
+
+Map file is also saved under 'map.txt'.
 
 For navigation, Breadth First search is used to find unmapped areas. Breadth first search starts from robot's current position.
 
 Once an unmapped area has been found, A* Search is used to find path between robot's current position and the unmapped area.
 
+Turtlebot follows the global path by updating its' path on the fly. It always attempts to go to 1st item in the path, and pops the item if it has reached the coordinate. It is like a pacman following a line.
+
 For visualization purposes, if path is found, it is published to /global_plan topic. One can use Rviz to visualize the path.
+
+## Future Improvements
+* Global Path Smoothing
+* Uses control signal to follow the global path
+* Implements obstacle avoidance (Local Planner)
+
+
 
 
 
