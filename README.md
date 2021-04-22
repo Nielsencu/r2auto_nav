@@ -1,4 +1,4 @@
-#Group 8 Autonomous Navigation Turtlebot With IR Detecting Ping-Pong Cannon
+# Group 8 Autonomous Navigation Turtlebot With IR Detecting Ping-Pong Cannon
 
 Group 8 has recorded the steps required to get an up-and-running turtlebot 
 required for autonomous navigation,mapping,detection via IR,aiming and firing of
@@ -9,7 +9,7 @@ may not be entirely supported)
 
 
 
-##Installation Of Required OS and Packages
+## Installation Of Required OS and Packages
 
 Using the IMG file provided, follow the instructions in the link provided to get your OS up.
 
