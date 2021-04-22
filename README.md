@@ -31,22 +31,22 @@ bash ./install_ros2_foxy.sh
 #Install ROS 2 dependencies: Gazebo11, Cartographer and Navigation2
 
 ```bash	
-	sudo apt-get install ros-foxy-gazebo-*
+sudo apt-get install ros-foxy-gazebo-*
 
-	sudo apt install ros-foxy-cartographer
-	sudo apt install ros-foxy-cartographer-ros
+sudo apt install ros-foxy-cartographer
+sudo apt install ros-foxy-cartographer-ros
 
-	sudo apt install ros-foxy-navigation2
-	sudo apt install ros-foxy-nav2-bringup
+sudo apt install ros-foxy-navigation2
+sudo apt install ros-foxy-nav2-bringup
 ```
 
 #Install Turtlebot3 Packages
 
 ```bash
-	source ~/.bashrc
-	sudo apt install ros-foxy-dynamixel-sdk
-	sudo apt install ros-foxy-turtlebot3-msgs
-	sudo apt install ros-foxy-turtlebot3
+source ~/.bashrc
+sudo apt install ros-foxy-dynamixel-sdk
+sudo apt install ros-foxy-turtlebot3-msgs
+sudo apt install ros-foxy-turtlebot3
 ```
 
 ## Setting up your ROS Environment
@@ -56,8 +56,8 @@ does not have to follow ours but it is best to to get the most optimal results.
 
 
 ```bash
-	echo 'export ROS_DOMAIN_ID=37 #TURTLEBOT3' >> ~/.bashrc
-	source ~/.bashrc
+echo 'export ROS_DOMAIN_ID=37 #TURTLEBOT3' >> ~/.bashrc
+source ~/.bashrc
 ```
 	
 #SSH Setup (With AWS)
@@ -91,29 +91,32 @@ including the public IPv4 address (Note this down)
 You will need to change the permission settings on the key pair file, so first open up the Terminal application and check your file permissions:
 
 ```bash	
-	ls -l ~/Downloads/MyKeyPair.pem
+ls -l ~/Downloads/MyKeyPair.pem
 ```
 
 This should return the following:
 
 ```bash
-	-rw-r--r--@ 1 syen  staff  1700 Dec 13 22:18 /Users/syen/Downloads/MyKeyPair.pem
+-rw-r--r--@ 1 syen  staff  1700 Dec 13 22:18 /Users/syen/Downloads/MyKeyPair.pem
 ```
 
 indicating that the owner (i.e. you) has read and write permissions, but users in your group only have read permissions, and other users only have read permissions. AWS will reject these permissions as not being secure enough, so you will need to change the permissions by doing:
 
 ```bash
-	chmod 400 ~/Downloads/MyKeyPair.pem
+chmod 400 ~/Downloads/MyKeyPair.pem
+```
 
-	If you check your permissions again:
+If you check your permissions again:
 
-	ls -l ~/Downloads/MyKeyPair.pem
+
+```bash
+ls -l ~/Downloads/MyKeyPair.pem
 ```
 
 you should see: 
 
 ```bash
-	-r--------@ 1 syen  staff  1700 Dec 13 22:18 /Users/syen/Downloads/MyKeyPair.pem
+-r--------@ 1 syen  staff  1700 Dec 13 22:18 /Users/syen/Downloads/MyKeyPair.pem
 ```
 
 which means that only you have read permissions, and even the write permissions have been removed so you will not accidentally modify the file.
@@ -124,7 +127,7 @@ which means that only you have read permissions, and even the write permissions 
 In order to simplify the login process, create a SSH public-private key pair on your laptop:
 
 ```bash
-	ssh-keygen
+ssh-keygen
 ```
 
 Hit Return three times to use the default file name, and to accept a blank password. This will create two files in the .ssh directory in your home directory: id_rsa and id_rsa.pub
@@ -132,13 +135,13 @@ Hit Return three times to use the default file name, and to accept a blank passw
 You can now use the following command to copy the second file to your EC2 instance :
 
 ```bash
-	scp -i ~/Downloads/MyKeyPair.pem ~/.ssh/id_rsa.pub ec2-user@IP-address:~/
+scp -i ~/Downloads/MyKeyPair.pem ~/.ssh/id_rsa.pub ec2-user@IP-address:~/
 ```
 
 Login to your EC2 instance:
 
 ```bash	
-	ssh -i ~/Downloads/MyKeyPair.pem ec2-user@IP-address
+ssh -i ~/Downloads/MyKeyPair.pem ec2-user@IP-address
 ```
 
 You might get a warning that says:
@@ -168,13 +171,13 @@ This means that you have successfully accessed your EC2 instance.
 Run the ssh-keygen command to create keys on your EC2 instance:
 	
 ```bash
-	ssh-keygen
+ssh-keygen
 ```
 
 Move the id_rsa.pub file from your laptop to the .ssh directory:
 
 ```bash
-	mv id_rsa.pub ~/.ssh/authorized_keys
+mv id_rsa.pub ~/.ssh/authorized_keys
 ```
 
 
@@ -182,48 +185,52 @@ Move the id_rsa.pub file from your laptop to the .ssh directory:
 You should now be able to login:
 
 ```bash
-	ssh ec2-user@IP-address
+ssh ec2-user@IP-address
 ```
 
 
 You can create an alias by editing the config file using nano or vim:
 
 ```bash
-	nano ~/.ssh/config
+nano ~/.ssh/config
 ```
 
 Enter the following (replace IP-address below with the IP address of your EC2 instance):
 	
 ```bash
-	Host aws 
-	HostName IP-address
-	User ec2-user
+Host aws 
+HostName IP-address
+User ec2-user
 ```
 
 You should now be able to login:
 
 ```bash
-	ssh aws
+ssh aws
 ```
 
 Be sure that you do not shut down or restart your AWS instance as it will change the IP address of the AWS instance, and you will then need to update the address in your scripts.
 If you are working in a group and would like your group members to have access,they can do the following:
 	
 ```bash
-	ssh-keygen
-	cd .ssh
-	cat id_rsa.pub
+ssh-keygen
+cd .ssh
+cat id_rsa.pub
 ```
 
 They can copy the contents of the id_rsa.pub and share it with you via email. You should then add the key into the authorized_keys file.
 	
 ```bash
-	nano ~/.ssh/authorized_keys
+nano ~/.ssh/authorized_keys
 ```
 
 ## Setting up of RPis for Turtlebot
 
+# Overview
+
+
 # Navigation
+
 
 
 	
