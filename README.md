@@ -51,7 +51,7 @@ For visualization purposes, if path is found, it is published to /global_plan to
 </p>
 
 # Identify, Aim, Fire
-
+The IR camera used is an AMG8833, which returns a 8x8 array of data that displays the temperature within its range. After identifying that there is a target within range, the next is to aim. To aim, we selected a few indexes in the 8x8 array, typically the middle rows and top-middle rows, as the most probable chances for the ping pong ball to hit the target if fired. We then integrated it with the stepper motor attached, allowing us to tile the mechanism up and down wherever needed and once it reached our ideal angle, fire away. The Fire script is run, where the firing motor starts its revolutions first followed by a slight delay before the feeder motor begins. After the script ends, navigation continues.
 
 # Navigation and Shooting Integration
 If the first threshold temperature is inside the 8x8 array returned by IR camera, RPi will publish a message to r2auto_nav that the target is detected and navigation will be stopped immediately. Following that, RPi will keep publishing messages to r2auto_nav either move forward, left or right until the second threshold temperature is in the middle of the 8x8 array. Once the second threshold is in the middle, it will stop moving and trigger the shooting mechanism. Once it has shot, it will publish one last message to resume navigation and the script will be terminated. Navigation is then resumed as per usual.
