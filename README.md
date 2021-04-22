@@ -221,7 +221,9 @@ They can copy the contents of the id_rsa.pub and share it with you via email. Yo
 	nano ~/.ssh/authorized_keys
 ```
 
-#Setting up of RPis for Turtlebot
+## Setting up of RPis for Turtlebot
+
+# Navigation
 
 
 	
