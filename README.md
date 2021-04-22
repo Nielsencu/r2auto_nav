@@ -48,7 +48,6 @@ For visualization purposes, if path is found, it is published to /global_plan to
 
 <p align="center">
 	<img src="doc/pathonlyu.png" width="600"/>
-	<p>Yellow tiles can be either of value 1 or 2 , 3 means that it is unreachable</p>
 </p>
 
 # Identify, Aim, Fire
