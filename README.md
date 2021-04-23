@@ -26,7 +26,7 @@ For occupancy grid data, -1 value is mapped to 1, and occupancy grid values rang
 
 In this case, 1 is unmapped, 2 is free space, and 3 is blocked.
 
-Map file is also saved under 'map.txt'.
+Map file is also saved under 'occ.txt'.
 
 For navigation, Breadth First search is used to find unmapped areas. Breadth first search starts from robot's current position.
 
