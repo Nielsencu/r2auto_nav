@@ -34,7 +34,7 @@ Unmapped area is a 3x3 subarray, as shown below.
 
 <p align="center">
 	<img src="doc/unmapped.png" width="300"/>
-	<p width="400">Yellow tiles can be either of value 1 or 2</p>
+	<p width="400" align="center" >Yellow tiles can be either of value 1 or 2</p>
 </p>
 
 
