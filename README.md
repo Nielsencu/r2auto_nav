@@ -12,7 +12,7 @@ Group 8 has modified the turtlebot to perform autonomous navigation and given an
 7) Python IDE
 
 # Installation
-The full set-up from scratch is provided in the [wiki](https://github.com/Nielsencu/r2auto_nav/wiki) (Make sure to click on Foxy tab). We assume that you already have the relevant packages as stated above.
+The full set-up from scratch is provided in the [Wiki](https://github.com/Nielsencu/r2auto_nav/wiki) (Make sure to click on Foxy tab). We assume that you already have the relevant packages as stated above.
 
 # Overview
 Software flow for mapping and firing.
