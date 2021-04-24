@@ -22,6 +22,8 @@ Software flow for mapping and firing.
 </p>
 
 ## Navigation
+Navigation algorithm is in r2auto_nav.py, configurations such as occupancy threshold, linear speed and rotation speed can be tweaked inside.
+
 For occupancy grid data, -1 value is mapped to 1, and occupancy grid values ranging from 0 to 60 are mapped to 2 and 60 to 100 are mapped to 3.
 
 In this case, 1 is unmapped, 2 is free space, and 3 is blocked.
@@ -71,8 +73,7 @@ If the first threshold temperature is inside the 8x8 array returned by IR camera
 
 # Future Improvements
 * Global Path Smoothing
-* Uses control signal to follow the global path
-* Implement obstacle avoidance (Local Planner)
+* Uses control signal to follow the global path based on surrounding local map (Obstacle avoidance)
 	
 	
 
